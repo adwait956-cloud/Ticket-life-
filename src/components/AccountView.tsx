@@ -15,18 +15,22 @@ import {
   BellRing,
   Smartphone,
   Lock,
+  UserPlus,
+  AlertTriangle,
+  X,
 } from 'lucide-react';
 import { PassengerInfo, UserAccount } from '../types/travel';
-import { saveStoredUser } from '../services/api';
+import { saveStoredUser, deleteStoredUser } from '../services/api';
 import { PWAInstallButton } from './PWAInstallButton';
 import { sendForgotPasswordNotification } from '../services/gmailService';
 import { getAccessToken } from '../services/firebaseAuth';
 
 interface AccountViewProps {
-  user: UserAccount;
+  user: UserAccount | null;
   onUpdateUser: (updatedUser: UserAccount) => void;
   onLogout: () => void;
-  onOpenAuthModal?: () => void;
+  onOpenAuthModal?: (mode?: 'signin' | 'signup') => void;
+  onDeleteAccount: () => void;
 }
 
 export const AccountView: React.FC<AccountViewProps> = ({
@@ -34,18 +38,68 @@ export const AccountView: React.FC<AccountViewProps> = ({
   onUpdateUser,
   onLogout,
   onOpenAuthModal,
+  onDeleteAccount,
 }) => {
-  const [fullName, setFullName] = useState(user.fullName);
-  const [phone, setPhone] = useState(user.phone);
-  const [savedPassengers, setSavedPassengers] = useState<PassengerInfo[]>(user.savedPassengers);
+  // If no user or empty email, show unauthenticated gateway
+  const isAuthenticated = Boolean(user && user.email && user.email.trim().length > 0);
+
+  const [fullName, setFullName] = useState(user?.fullName || '');
+  const [phone, setPhone] = useState(user?.phone || '');
+  const [savedPassengers, setSavedPassengers] = useState<PassengerInfo[]>(user?.savedPassengers || []);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [securityNotice, setSecurityNotice] = useState('');
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   // New passenger fields
   const [newPaxName, setNewPaxName] = useState('');
   const [newPaxAge, setNewPaxAge] = useState<number>(28);
   const [newPaxGender, setNewPaxGender] = useState<'male' | 'female' | 'other'>('male');
   const [newPaxSeat, setNewPaxSeat] = useState('Window');
+
+  if (!isAuthenticated || !user) {
+    return (
+      <div className="w-full space-y-8 max-w-4xl mx-auto animate-in fade-in duration-300">
+        <div className="text-center py-12 px-6 bg-white dark:bg-stone-900 rounded-3xl border border-stone-200 dark:border-stone-800 shadow-sm space-y-6">
+          <div className="w-16 h-16 rounded-3xl bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 mx-auto flex items-center justify-center shadow-inner">
+            <UserPlus className="w-8 h-8" />
+          </div>
+
+          <div className="max-w-md mx-auto space-y-2">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-amber-600 dark:text-amber-400">
+              ACCOUNT HUB · 4TH BUTTON
+            </span>
+            <h1 className="text-2xl font-black text-stone-900 dark:text-white">
+              Create Account or Log In
+            </h1>
+            <p className="text-xs text-stone-500 dark:text-stone-400 leading-relaxed">
+              Ticket Life requires an account to book verified tickets across cars, autos, buses, bikes, trains, and flights, top up your wallet, and receive official email confirmations.
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+            <button
+              onClick={() => onOpenAuthModal?.('signup')}
+              className="w-full sm:w-auto px-6 py-3 bg-stone-900 hover:bg-stone-800 dark:bg-amber-500 dark:hover:bg-amber-400 text-white dark:text-stone-950 font-black rounded-xl text-xs transition-transform active:scale-95 flex items-center justify-center gap-2 shadow-sm"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>Create Account (नया अकाउंट बनाएं)</span>
+            </button>
+            <button
+              onClick={() => onOpenAuthModal?.('signin')}
+              className="w-full sm:w-auto px-6 py-3 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-900 dark:text-white font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-2"
+            >
+              <KeyRound className="w-4 h-4" />
+              <span>Log In (लॉग इन करें)</span>
+            </button>
+          </div>
+
+          <div className="pt-6 border-t border-stone-100 dark:border-stone-800 max-w-lg mx-auto">
+            <PWAInstallButton variant="card" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const handleSaveProfile = () => {
     const updated: UserAccount = {
@@ -99,6 +153,12 @@ export const AccountView: React.FC<AccountViewProps> = ({
     onUpdateUser(updatedUser);
   };
 
+  const handleConfirmDeleteAccount = () => {
+    deleteStoredUser();
+    setShowDeleteModal(false);
+    onDeleteAccount();
+  };
+
   return (
     <div className="w-full space-y-8 max-w-4xl mx-auto animate-in fade-in duration-300">
       {/* Top Header */}
@@ -118,15 +178,15 @@ export const AccountView: React.FC<AccountViewProps> = ({
         <div className="flex items-center gap-2">
           {onOpenAuthModal && (
             <button
-              onClick={onOpenAuthModal}
+              onClick={() => onOpenAuthModal('signin')}
               className="px-3.5 py-2 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 font-bold rounded-xl text-xs transition-colors"
             >
-              Switch Account / Login
+              Switch Account
             </button>
           )}
           <button
             onClick={onLogout}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 font-bold rounded-xl text-xs transition-colors border border-rose-200 dark:border-rose-800"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 font-bold rounded-xl text-xs transition-colors border border-stone-200 dark:border-stone-700"
           >
             <LogOut className="w-3.5 h-3.5" />
             <span>Sign Out</span>
@@ -148,7 +208,7 @@ export const AccountView: React.FC<AccountViewProps> = ({
         </div>
       )}
 
-      {/* PWA INSTALLATION BANNER (For user's Home Screen request) */}
+      {/* PWA INSTALLATION BANNER */}
       <PWAInstallButton variant="card" />
 
       {/* Profile & Security Credentials Card */}
@@ -156,11 +216,13 @@ export const AccountView: React.FC<AccountViewProps> = ({
         <div className="flex items-center justify-between pb-4 border-b border-stone-100 dark:border-stone-800">
           <div className="flex items-center gap-3.5">
             <div className="w-12 h-12 rounded-2xl bg-stone-900 dark:bg-amber-500 text-white dark:text-stone-950 flex items-center justify-center font-black text-xl shadow-xs">
-              {fullName.charAt(0) || 'A'}
+              {(fullName || user.email).charAt(0).toUpperCase()}
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-black text-stone-900 dark:text-white">{fullName}</h2>
+                <h2 className="text-base font-black text-stone-900 dark:text-white">
+                  {fullName || 'Ticket Life Passenger'}
+                </h2>
                 <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
                   Verified User
                 </span>
@@ -187,6 +249,7 @@ export const AccountView: React.FC<AccountViewProps> = ({
             </label>
             <input
               type="text"
+              placeholder="Enter legal full name"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               className="w-full px-3.5 py-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-semibold text-stone-900 dark:text-white focus:outline-none"
@@ -199,6 +262,7 @@ export const AccountView: React.FC<AccountViewProps> = ({
             </label>
             <input
               type="tel"
+              placeholder="+91 98765 43210"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               className="w-full px-3.5 py-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-semibold text-stone-900 dark:text-white focus:outline-none"
@@ -256,30 +320,36 @@ export const AccountView: React.FC<AccountViewProps> = ({
         </div>
 
         {/* Existing List */}
-        <div className="space-y-2">
-          {savedPassengers.map((pax) => (
-            <div
-              key={pax.id}
-              className="p-3.5 bg-stone-50 dark:bg-stone-800/60 rounded-xl border border-stone-200 dark:border-stone-700/80 flex items-center justify-between text-xs"
-            >
-              <div>
-                <div className="font-bold text-stone-900 dark:text-white">{pax.fullName}</div>
-                <div className="text-stone-500 dark:text-stone-400 text-[11px] mt-0.5">
-                  {pax.age} yrs · {pax.gender} · Seat Preference: {pax.seatPreference || 'Window'}
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => handleDeletePassenger(pax.id)}
-                className="text-stone-400 hover:text-rose-600 p-1.5 transition-colors"
-                title="Remove passenger"
+        {savedPassengers.length === 0 ? (
+          <div className="p-4 bg-stone-50 dark:bg-stone-800/40 rounded-xl text-center text-xs text-stone-400 border border-stone-100 dark:border-stone-800">
+            No co-travelers saved yet. Add co-passengers below for instant checkout.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {savedPassengers.map((pax) => (
+              <div
+                key={pax.id}
+                className="p-3.5 bg-stone-50 dark:bg-stone-800/60 rounded-xl border border-stone-200 dark:border-stone-700/80 flex items-center justify-between text-xs"
               >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          ))}
-        </div>
+                <div>
+                  <div className="font-bold text-stone-900 dark:text-white">{pax.fullName}</div>
+                  <div className="text-stone-500 dark:text-stone-400 text-[11px] mt-0.5">
+                    {pax.age} yrs · {pax.gender} · Seat Preference: {pax.seatPreference || 'Window'}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleDeletePassenger(pax.id)}
+                  className="text-stone-400 hover:text-rose-600 p-1.5 transition-colors"
+                  title="Remove passenger"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Add Co-traveler Form */}
         <div className="pt-4 border-t border-stone-100 dark:border-stone-800 space-y-3">
@@ -321,7 +391,7 @@ export const AccountView: React.FC<AccountViewProps> = ({
                 type="button"
                 onClick={handleAddPassenger}
                 disabled={!newPaxName.trim()}
-                className="w-full py-2 bg-stone-900 hover:bg-stone-800 dark:bg-amber-500 dark:hover:bg-amber-400 text-white dark:text-stone-950 font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5 shadow-xs"
+                className="w-full py-2 bg-stone-900 hover:bg-stone-800 dark:bg-amber-500 dark:hover:bg-amber-400 text-white dark:text-stone-950 font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-50"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Save Traveler</span>
@@ -330,6 +400,74 @@ export const AccountView: React.FC<AccountViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* DANGER ZONE: DELETE ACCOUNT */}
+      <div className="p-6 bg-rose-50/70 dark:bg-rose-950/20 rounded-2xl border border-rose-200 dark:border-rose-900/50 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Trash2 className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+              <h3 className="text-sm font-black text-rose-950 dark:text-rose-200">
+                Delete Account (अकाउंट हमेशा के लिए हटाएं)
+              </h3>
+            </div>
+            <p className="text-xs text-rose-700 dark:text-rose-300 leading-relaxed max-w-xl">
+              Permanently delete this account ({user.fullName ? `${user.fullName} · ` : ''}{user.email}), clear wallet balance, and purge all saved travel history from this device.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowDeleteModal(true)}
+            className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl text-xs transition-colors shrink-0 flex items-center justify-center gap-2 shadow-xs"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>Delete Account</span>
+          </button>
+        </div>
+      </div>
+
+      {/* DELETE ACCOUNT CONFIRMATION MODAL */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/70 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white dark:bg-stone-900 rounded-3xl border border-stone-200 dark:border-stone-800 p-6 max-w-md w-full shadow-2xl space-y-5 animate-in zoom-in-95">
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-2">
+              <h4 className="text-lg font-black text-stone-900 dark:text-white">
+                Delete Account & Wipe Data?
+              </h4>
+              <p className="text-xs text-stone-500 dark:text-stone-400 leading-relaxed">
+                Are you sure you want to permanently delete account <strong>{user.email}</strong>? All travel bookings, wallet balance, and co-traveler records will be completely erased.
+              </p>
+            </div>
+
+            <div className="p-3 bg-rose-50 dark:bg-rose-950/40 rounded-xl text-[11px] text-rose-700 dark:text-rose-300 font-semibold border border-rose-200 dark:border-rose-900/50">
+              This action is permanent and cannot be undone. You will be redirected to the account creation screen.
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                className="flex-1 py-2.5 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 font-bold rounded-xl text-xs transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteAccount}
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Yes, Delete Account</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

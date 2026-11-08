@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   ShieldCheck,
@@ -32,6 +32,7 @@ interface AuthModalProps {
   onSuccess: (user: UserAccount, token?: string) => void;
   onNotificationSent?: (type: string, email: string) => void;
   isMandatoryStartup?: boolean;
+  initialMode?: 'signin' | 'signup' | 'forgot_password';
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({
@@ -39,8 +40,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onSuccess,
   onNotificationSent,
   isMandatoryStartup = false,
+  initialMode = 'signin',
 }) => {
-  const [authMode, setAuthMode] = useState<'signin' | 'signup' | 'forgot_password'>('signin');
+  const [authMode, setAuthMode] = useState<'signin' | 'signup' | 'forgot_password'>(initialMode);
+
+  useEffect(() => {
+    setAuthMode(initialMode);
+  }, [initialMode]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -132,7 +138,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     try {
       const token = await getAccessToken();
-      const userName = loginEmail.includes('adwait') ? 'Adwait Sharma' : 'Verified Passenger';
+      const userName = loginEmail.split('@')[0] || 'Verified Passenger';
 
       // Dispatches security alert email to registered email
       try {
@@ -145,10 +151,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         id: `usr-${Date.now()}`,
         email: loginEmail.trim(),
         fullName: userName,
-        phone: '+91 98765 43210',
+        phone: '',
         role: 'passenger',
-        walletBalance: 2450,
-        savedPassengers: INITIAL_USER.savedPassengers,
+        walletBalance: 0,
+        savedPassengers: [],
       };
 
       saveStoredUser(userObj);
@@ -176,8 +182,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     try {
       const res = await googleSignIn();
       if (res && res.user) {
-        const email = res.user.email || 'adwait956@gmail.com';
-        const name = res.user.displayName || 'Adwait Sharma';
+        const email = res.user.email || '';
+        const name = res.user.displayName || 'Verified Passenger';
 
         // Dispatches security alert email to registered email
         try {
@@ -190,10 +196,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           id: res.user.uid,
           email,
           fullName: name,
-          phone: res.user.phoneNumber || '+91 98765 43210',
+          phone: res.user.phoneNumber || '',
           role: 'passenger',
-          walletBalance: 2450,
-          savedPassengers: INITIAL_USER.savedPassengers,
+          walletBalance: 0,
+          savedPassengers: [],
         };
 
         saveStoredUser(userObj);
@@ -341,25 +347,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  // Fast Demo Helpers
-  const handleQuickDemoPassenger = async () => {
-    await sendLoginSecurityAlertNotification(INITIAL_USER.email, INITIAL_USER.fullName, null);
-    onSuccess(INITIAL_USER);
-    onClose();
-  };
-
-  const handleQuickDemoAdmin = async () => {
-    const adminUser: UserAccount = {
-      ...INITIAL_USER,
-      id: 'admin-1',
-      fullName: 'Adwait (System Admin)',
-      role: 'admin',
-    };
-    await sendLoginSecurityAlertNotification(adminUser.email, adminUser.fullName, null);
-    onSuccess(adminUser);
-    onClose();
-  };
-
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-950/85 backdrop-blur-md flex items-center justify-center p-4">
       <div className="relative bg-white dark:bg-stone-900 rounded-3xl shadow-2xl border border-stone-200 dark:border-stone-800 w-full max-w-lg overflow-hidden transition-all">
@@ -384,23 +371,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </button>
         </div>
 
-        {/* Mode Switch Tabs (Sign In, Create Account, Reset Access) */}
+        {/* Mode Switch Tabs (Create Account, Sign In, Forgot Password) */}
         <div className="grid grid-cols-3 border-b border-stone-100 dark:border-stone-800 text-xs font-bold text-center">
           <button
             type="button"
-            onClick={() => { setAuthMode('signin'); setErrorMessage(''); setSuccessMessage(''); }}
-            className={`py-3 transition-colors ${
-              authMode === 'signin'
-                ? 'border-b-2 border-stone-900 dark:border-amber-400 text-stone-900 dark:text-amber-400 font-black'
-                : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-300'
-            }`}
-          >
-            Sign In
-          </button>
-          <button
-            type="button"
             onClick={() => { setAuthMode('signup'); setErrorMessage(''); setSuccessMessage(''); }}
-            className={`py-3 transition-colors ${
+            className={`py-3 px-1 transition-colors ${
               authMode === 'signup'
                 ? 'border-b-2 border-stone-900 dark:border-amber-400 text-stone-900 dark:text-amber-400 font-black'
                 : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-300'
@@ -410,8 +386,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </button>
           <button
             type="button"
+            onClick={() => { setAuthMode('signin'); setErrorMessage(''); setSuccessMessage(''); }}
+            className={`py-3 px-1 transition-colors ${
+              authMode === 'signin'
+                ? 'border-b-2 border-stone-900 dark:border-amber-400 text-stone-900 dark:text-amber-400 font-black'
+                : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-300'
+            }`}
+          >
+            Log In
+          </button>
+          <button
+            type="button"
             onClick={() => { setAuthMode('forgot_password'); setErrorMessage(''); setSuccessMessage(''); }}
-            className={`py-3 transition-colors ${
+            className={`py-3 px-1 transition-colors ${
               authMode === 'forgot_password'
                 ? 'border-b-2 border-stone-900 dark:border-amber-400 text-stone-900 dark:text-amber-400 font-black'
                 : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-300'
@@ -524,16 +511,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <span>{isLoading ? 'Connecting to Google...' : 'Sign In with Google (Sync Gmail)'}</span>
               </button>
 
-              {/* Fast Instant Demo Access */}
-              <div className="space-y-2 pt-2 border-t border-stone-100 dark:border-stone-800">
-                <button
-                  type="button"
-                  onClick={handleQuickDemoPassenger}
-                  className="w-full py-2.5 px-3 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 rounded-xl text-xs font-bold transition-colors flex items-center justify-between"
-                >
-                  <span>Explore as Demo Passenger (Adwait Sharma)</span>
-                  <UserCheck className="w-4 h-4 text-emerald-600" />
-                </button>
+              {/* Guest or skip exploration */}
+              <div className="pt-2 border-t border-stone-100 dark:border-stone-800">
                 <button
                   type="button"
                   onClick={onClose}

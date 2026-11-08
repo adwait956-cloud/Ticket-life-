@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   BookingRecord,
   EmailNotificationLog,
+  PriceAlert,
   ProviderStatus,
   SearchFilterState,
   SupportTicket,
@@ -12,12 +13,16 @@ import {
 } from './types/travel';
 import {
   getStoredBookings,
+  getStoredPriceAlerts,
+  evaluatePriceAlerts,
   getStoredProviders,
   getStoredSupportTickets,
   getStoredUser,
   saveStoredUser,
+  deleteStoredUser,
   searchTransportOptions,
 } from './services/api';
+import { TRANSPORT_CATALOG } from './data/mockData';
 import { initAuth, logoutGoogle, setCachedAccessToken, getAccessToken, googleSignIn } from './services/firebaseAuth';
 import { buildTravelDigest, fetchTravelEmails } from './services/gmailService';
 import { Navbar } from './components/Navbar';
@@ -31,6 +36,7 @@ import { LiveTrackerModal } from './components/LiveTrackerModal';
 import { GmailConfirmationModal } from './components/GmailConfirmationModal';
 import { CancellationModal } from './components/CancellationModal';
 import { NotificationCenterModal } from './components/NotificationCenterModal';
+import { SetPriceAlertModal } from './components/SetPriceAlertModal';
 import { MyBookingsView } from './components/MyBookingsView';
 import { ExploreView } from './components/ExploreView';
 import { OffersView } from './components/OffersView';
@@ -57,13 +63,19 @@ export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(false);
 
   // User & Auth
-  const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => getStoredUser());
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
+    const u = getStoredUser();
+    return u && u.email && u.email.trim().length > 0 ? u : null;
+  });
   const [googleUserEmail, setGoogleUserEmail] = useState<string | null>(null);
 
-  // App open login screen: triggers when app opens
+  // App open auth screen: first time opening app asks to Create Account or Log In
   const [isAuthOpen, setIsAuthOpen] = useState<boolean>(() => {
-    return sessionStorage.getItem('ticketlife_startup_seen') !== 'true';
+    const u = getStoredUser();
+    const hasAccount = Boolean(u && u.email && u.email.trim().length > 0);
+    return !hasAccount;
   });
+  const [authInitialMode, setAuthInitialMode] = useState<'signin' | 'signup'>('signup');
 
   // Core Data
   const [bookings, setBookings] = useState<BookingRecord[]>(() => getStoredBookings());
@@ -102,6 +114,17 @@ export default function App() {
   const [bookingForGmail, setBookingForGmail] = useState<BookingRecord | null>(null);
   const [bookingToCancel, setBookingToCancel] = useState<BookingRecord | null>(null);
 
+  // Price Alerts State
+  const [priceAlerts, setPriceAlerts] = useState<PriceAlert[]>(() => getStoredPriceAlerts());
+  const [priceAlertModalData, setPriceAlertModalData] = useState<{
+    origin?: string;
+    originCode?: string;
+    destination?: string;
+    destCode?: string;
+    category?: TransportCategory;
+    currentPrice?: number;
+  } | null>(null);
+
   // Toast notification
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -109,6 +132,20 @@ export default function App() {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 4500);
   };
+
+  // Evaluate price alerts whenever search results or options change
+  useEffect(() => {
+    if (searchResults.length > 0 && priceAlerts.length > 0) {
+      const matches = evaluatePriceAlerts(searchResults, priceAlerts);
+      if (matches.length > 0) {
+        setPriceAlerts(getStoredPriceAlerts());
+        const first = matches[0];
+        showToast(
+          `🔥 Price Drop: ${first.triggeredAlert.origin} → ${first.triggeredAlert.destination} now at ₹${first.matchingOption.price}! Check Notification Center.`
+        );
+      }
+    }
+  }, [searchResults]);
 
   // Sync dark mode class
   useEffect(() => {
@@ -129,22 +166,26 @@ export default function App() {
     });
   }, [bookings]);
 
-  // Initialize Firebase Auth listener
+  // One-time startup purge of legacy "Adwait Sharma" account and cached sessions
+  useEffect(() => {
+    const isPurged = localStorage.getItem('ticketlife_adwait_purged_v4') === 'true';
+    if (!isPurged) {
+      deleteStoredUser();
+      logoutGoogle().catch(() => {});
+      localStorage.setItem('ticketlife_adwait_purged_v4', 'true');
+      setCurrentUser(null);
+      setGoogleUserEmail(null);
+      setBookings([]);
+      setDigestItems([]);
+      setIsAuthOpen(true);
+      setAuthInitialMode('signup');
+    }
+  }, []);
+
+  // Initialize Firebase Auth listener solely for background OAuth tokens (never auto-logins Adwait)
   useEffect(() => {
     initAuth((user, token) => {
-      if (user) {
-        setGoogleUserEmail(user.email);
-        if (token) setCachedAccessToken(token);
-        setCurrentUser((prev) => ({
-          id: user.uid,
-          email: user.email || '',
-          fullName: user.displayName || 'Passenger',
-          phone: user.phoneNumber || '',
-          role: prev?.role || 'passenger',
-          walletBalance: prev?.walletBalance ?? 0,
-          savedPassengers: prev?.savedPassengers || [],
-        }));
-      }
+      if (token) setCachedAccessToken(token);
     });
   }, []);
 
@@ -258,9 +299,23 @@ export default function App() {
 
   const handleLogout = async () => {
     await logoutGoogle();
+    deleteStoredUser();
     setCurrentUser(null);
     setGoogleUserEmail(null);
     showToast('Signed out successfully.');
+    setAuthInitialMode('signin');
+    setIsAuthOpen(true);
+  };
+
+  const handleDeleteAccount = () => {
+    deleteStoredUser();
+    setCurrentUser(null);
+    setGoogleUserEmail(null);
+    setBookings([]);
+    setDigestItems([]);
+    showToast('Account permanently deleted. All data has been wiped.');
+    setAuthInitialMode('signup');
+    setIsAuthOpen(true);
   };
 
   // Convert digest item to booking preview for modal
@@ -291,7 +346,7 @@ export default function App() {
         arrivalTime: 'On Schedule',
         duration: 'Direct',
         passengers: [
-          { id: 'pax-1', fullName: currentUser?.fullName || 'Adwait Sharma', age: 28, gender: 'male' },
+          { id: 'pax-1', fullName: currentUser?.fullName || 'Primary Passenger', age: 28, gender: 'male' },
         ],
         seatNumbers: [digestItem.seatInfo || 'Seat 14A'],
         fareBreakdown: {
@@ -413,7 +468,7 @@ export default function App() {
         )}
 
         {/* BUTTON 4: ACCOUNT SETTING */}
-        {activeTab === 'account' && currentUser && (
+        {activeTab === 'account' && (
           <AccountView
             user={currentUser}
             onUpdateUser={(updated) => {
@@ -421,7 +476,11 @@ export default function App() {
               showToast('Account details updated.');
             }}
             onLogout={handleLogout}
-            onOpenAuthModal={() => setIsAuthOpen(true)}
+            onOpenAuthModal={(mode = 'signin') => {
+              setAuthInitialMode(mode);
+              setIsAuthOpen(true);
+            }}
+            onDeleteAccount={handleDeleteAccount}
           />
         )}
 
@@ -488,7 +547,7 @@ export default function App() {
       {bookingForGmail && (
         <GmailConfirmationModal
           booking={bookingForGmail}
-          currentUserEmail={googleUserEmail || currentUser?.email || 'adwait956@gmail.com'}
+          currentUserEmail={currentUser?.email || googleUserEmail || ''}
           onClose={() => setBookingForGmail(null)}
           onSuccess={() => {
             showToast('Ticket delivered to your Gmail inbox.');
@@ -508,6 +567,7 @@ export default function App() {
       {/* MODAL 6: Sign In / Google Auth with Account Creation & Password Reset */}
       {isAuthOpen && (
         <AuthModal
+          initialMode={authInitialMode}
           onClose={() => {
             sessionStorage.setItem('ticketlife_startup_seen', 'true');
             setIsAuthOpen(false);
@@ -524,9 +584,10 @@ export default function App() {
         />
       )}
 
-      {/* MODAL 7: Official Notification Center & Dispatcher from adwait956@gmail.com */}
+      {/* MODAL 7: Official Notification Center & Dispatcher */}
       {isNotificationCenterOpen && (
         <NotificationCenterModal
+          currentUser={currentUser}
           onClose={() => setIsNotificationCenterOpen(false)}
           onNotificationSent={(log) => {
             showToast(`Notification sent to ${log.recipientEmail}!`);
@@ -556,7 +617,7 @@ export default function App() {
           </div>
           <div className="mt-4 pt-4 border-t border-stone-100 dark:border-stone-800 flex justify-between items-center text-[11px] text-stone-400">
             <p>© 2026 Ticket Life Technologies. All Rights Reserved.</p>
-            <p>Verified Partner Gateway Architecture · adwait956@gmail.com</p>
+            <p>Verified Partner Gateway Architecture · IRCTC & IATA Certified</p>
           </div>
         </div>
       </footer>

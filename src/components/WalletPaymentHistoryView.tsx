@@ -25,12 +25,14 @@ interface WalletPaymentHistoryViewProps {
   user: UserAccount | null;
   bookings: BookingRecord[];
   onRefreshUser?: () => void;
+  onTopUpSuccess?: (amount: number, newBalance: number) => void;
 }
 
 export const WalletPaymentHistoryView: React.FC<WalletPaymentHistoryViewProps> = ({
   user,
   bookings,
   onRefreshUser,
+  onTopUpSuccess,
 }) => {
   const [activeTab, setActiveTab] = useState<'all' | 'wallet' | 'payments'>('all');
   const [transactions, setTransactions] = useState<WalletTransaction[]>(() =>
@@ -64,8 +66,10 @@ export const WalletPaymentHistoryView: React.FC<WalletPaymentHistoryViewProps> =
     setIsProcessingTopup(true);
     setTimeout(() => {
       const txn = addWalletFunds(finalAmt, selectedPayMethod);
-      setTransactions(getStoredWalletTransactions());
+      const updatedTxns = getStoredWalletTransactions();
+      setTransactions(updatedTxns);
       if (onRefreshUser) onRefreshUser();
+      if (onTopUpSuccess) onTopUpSuccess(finalAmt, txn.balanceAfter);
       setIsProcessingTopup(false);
       setTopupSuccessMsg(`₹${finalAmt.toLocaleString('en-IN')} added successfully to your Ticket Life Wallet!`);
       setTimeout(() => {
@@ -105,38 +109,50 @@ export const WalletPaymentHistoryView: React.FC<WalletPaymentHistoryViewProps> =
           </p>
         </div>
 
-        {/* View Toggle */}
-        <div className="flex items-center gap-1.5 p-1 bg-stone-100 dark:bg-stone-800/80 rounded-xl border border-stone-200 dark:border-stone-700/80 text-xs font-bold self-start sm:self-auto">
+        {/* Header Actions (Top-up Wallet & View Toggle) */}
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
           <button
-            onClick={() => setActiveTab('all')}
-            className={`px-3 py-1.5 rounded-lg transition-colors ${
-              activeTab === 'all'
-                ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-white shadow-xs'
-                : 'text-stone-500 hover:text-stone-900'
-            }`}
+            onClick={() => setIsAddMoneyOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-xs rounded-xl transition-all shadow-sm active:scale-[0.98] cursor-pointer"
+            title="Recharge or increase prepaid travel wallet balance"
           >
-            Overview
+            <Plus className="w-4 h-4 stroke-[3]" />
+            <span>Top-up Wallet</span>
           </button>
-          <button
-            onClick={() => setActiveTab('wallet')}
-            className={`px-3 py-1.5 rounded-lg transition-colors ${
-              activeTab === 'wallet'
-                ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-white shadow-xs'
-                : 'text-stone-500 hover:text-stone-900'
-            }`}
-          >
-            Wallet & Passbook
-          </button>
-          <button
-            onClick={() => setActiveTab('payments')}
-            className={`px-3 py-1.5 rounded-lg transition-colors ${
-              activeTab === 'payments'
-                ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-white shadow-xs'
-                : 'text-stone-500 hover:text-stone-900'
-            }`}
-          >
-            Payment Invoices ({filteredBookings.length})
-          </button>
+
+          {/* View Toggle */}
+          <div className="flex items-center gap-1.5 p-1 bg-stone-100 dark:bg-stone-800/80 rounded-xl border border-stone-200 dark:border-stone-700/80 text-xs font-bold">
+            <button
+              onClick={() => setActiveTab('all')}
+              className={`px-3 py-1.5 rounded-lg transition-colors ${
+                activeTab === 'all'
+                  ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-white shadow-xs'
+                  : 'text-stone-500 hover:text-stone-900'
+              }`}
+            >
+              Overview
+            </button>
+            <button
+              onClick={() => setActiveTab('wallet')}
+              className={`px-3 py-1.5 rounded-lg transition-colors ${
+                activeTab === 'wallet'
+                  ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-white shadow-xs'
+                  : 'text-stone-500 hover:text-stone-900'
+              }`}
+            >
+              Wallet & Passbook
+            </button>
+            <button
+              onClick={() => setActiveTab('payments')}
+              className={`px-3 py-1.5 rounded-lg transition-colors ${
+                activeTab === 'payments'
+                  ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-white shadow-xs'
+                  : 'text-stone-500 hover:text-stone-900'
+              }`}
+            >
+              Payment Invoices ({filteredBookings.length})
+            </button>
+          </div>
         </div>
       </div>
 
@@ -174,14 +190,14 @@ export const WalletPaymentHistoryView: React.FC<WalletPaymentHistoryViewProps> =
 
             <div className="pt-4 border-t border-stone-800 flex flex-wrap items-center justify-between gap-3">
               <div className="text-[11px] text-stone-400">
-                Linked Account: <strong className="text-stone-200">{user?.email || 'adwait956@gmail.com'}</strong>
+                Linked Account: <strong className="text-stone-200">{user?.email || 'No Account Linked'}</strong>
               </div>
               <button
                 onClick={() => setIsAddMoneyOpen(true)}
-                className="flex items-center gap-2 px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-stone-950 font-extrabold text-xs rounded-xl transition-colors shadow-sm"
+                className="flex items-center gap-2 px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-xs rounded-xl transition-all shadow-sm active:scale-[0.98] cursor-pointer"
               >
-                <Plus className="w-4 h-4" />
-                <span>Add Money to Wallet</span>
+                <Plus className="w-4 h-4 stroke-[3]" />
+                <span>Top-up Wallet</span>
               </button>
             </div>
           </div>
@@ -230,8 +246,28 @@ export const WalletPaymentHistoryView: React.FC<WalletPaymentHistoryViewProps> =
           </div>
 
           <div className="border border-stone-200 dark:border-stone-800 rounded-2xl overflow-hidden bg-white dark:bg-stone-900 shadow-xs">
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
+            {transactions.length === 0 ? (
+              <div className="text-center py-12 px-4 space-y-3">
+                <div className="w-12 h-12 bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center mx-auto border border-amber-200 dark:border-amber-800">
+                  <Wallet className="w-6 h-6" />
+                </div>
+                <h4 className="text-sm font-bold text-stone-900 dark:text-white">Passbook is Empty</h4>
+                <p className="text-xs text-stone-500 max-w-sm mx-auto">
+                  Aapke wallet mein abhi koi transaction ya top-up record nahi hai. Wallet balance increase karne ke liye top-up karein.
+                </p>
+                <div className="pt-2">
+                  <button
+                    onClick={() => setIsAddMoneyOpen(true)}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-xs rounded-xl transition-all shadow-sm active:scale-[0.98] cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4 stroke-[3]" />
+                    <span>Top-up Wallet Now</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
                 <thead className="bg-stone-50 dark:bg-stone-800/80 text-stone-500 dark:text-stone-400 uppercase font-bold text-[9px] tracking-wider border-b border-stone-200 dark:border-stone-800">
                   <tr>
                     <th className="px-4 py-3">Transaction Details</th>
@@ -293,9 +329,10 @@ export const WalletPaymentHistoryView: React.FC<WalletPaymentHistoryViewProps> =
                 </tbody>
               </table>
             </div>
-          </div>
+          )}
         </div>
-      )}
+      </div>
+    )}
 
       {/* COMPLETE PAYMENT HISTORY TABLE */}
       {(activeTab === 'all' || activeTab === 'payments') && (

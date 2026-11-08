@@ -74,8 +74,8 @@ export const BookingCheckoutModal: React.FC<BookingCheckoutModalProps> = ({
   });
 
   // Contact info
-  const [contactEmail, setContactEmail] = useState(user?.email || 'adwait956@gmail.com');
-  const [contactPhone, setContactPhone] = useState(user?.phone || '+91 98765 43210');
+  const [contactEmail, setContactEmail] = useState(user?.email || '');
+  const [contactPhone, setContactPhone] = useState(user?.phone || '');
 
   // Promo Code
   const [promoCodeInput, setPromoCodeInput] = useState('');
@@ -85,13 +85,13 @@ export const BookingCheckoutModal: React.FC<BookingCheckoutModalProps> = ({
   // Payment method
   const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'Card' | 'NetBanking' | 'Wallet'>('UPI');
   const [selectedUpiApp, setSelectedUpiApp] = useState<'gpay' | 'phonepe' | 'paytm' | 'qr'>('gpay');
-  const [upiIdInput, setUpiIdInput] = useState('adwait956@okhdfcbank');
+  const [upiIdInput, setUpiIdInput] = useState('');
   
   // Test Card details
   const [cardNumber, setCardNumber] = useState('4532 8901 2289 4410');
   const [cardExpiry, setCardExpiry] = useState('08/29');
   const [cardCvv, setCardCvv] = useState('882');
-  const [cardHolder, setCardHolder] = useState(user?.fullName || 'Adwait Sharma');
+  const [cardHolder, setCardHolder] = useState(user?.fullName || '');
 
   // Processing state
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);

@@ -136,7 +136,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 onClick={onOpenNotifications}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold text-stone-700 dark:text-stone-300 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 rounded-lg transition-colors border border-stone-200/60 dark:border-stone-700/60"
-                title="Email Notifications & Dispatcher (adwait956@gmail.com)"
+                title="Official Email Notifications & Dispatcher"
               >
                 <Mail className="w-3.5 h-3.5 text-red-500" />
                 <span className="hidden md:inline">Email Alerts</span>

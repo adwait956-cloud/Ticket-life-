@@ -2,6 +2,7 @@ import {
   BookingRecord,
   FareBreakdown,
   PassengerInfo,
+  PriceAlert,
   ProviderStatus,
   SearchFilterState,
   SupportTicket,
@@ -17,8 +18,10 @@ import {
   TRANSPORT_CATALOG,
 } from '../data/mockData';
 
-const BOOKINGS_STORAGE_KEY = 'ticketlife_bookings_v2';
-const USER_STORAGE_KEY = 'ticketlife_user_v2';
+const BOOKINGS_STORAGE_KEY = 'ticketlife_bookings_v4';
+const USER_STORAGE_KEY = 'ticketlife_user_v4';
+const WALLET_STORAGE_KEY = 'ticketlife_wallet_txns_v4';
+const PRICE_ALERTS_STORAGE_KEY = 'ticketlife_price_alerts_v1';
 const PROVIDERS_STORAGE_KEY = 'ticketlife_providers_v1';
 const SUPPORT_STORAGE_KEY = 'ticketlife_support_v1';
 
@@ -45,17 +48,25 @@ export function saveStoredBookings(bookings: BookingRecord[]): void {
   }
 }
 
-// User Profile
-export function getStoredUser(): UserAccount {
+// User Profile - Returns null if not logged in or if Adwait Sharma
+export function getStoredUser(): UserAccount | null {
   try {
     const raw = localStorage.getItem(USER_STORAGE_KEY);
-    if (!raw) {
-      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(INITIAL_USER));
-      return INITIAL_USER;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !parsed.email || parsed.email.trim() === '') {
+      return null;
     }
-    return JSON.parse(raw);
+    if (
+      parsed.fullName?.toLowerCase().includes('adwait') ||
+      parsed.email?.toLowerCase().includes('adwait')
+    ) {
+      deleteStoredUser();
+      return null;
+    }
+    return parsed;
   } catch (e) {
-    return INITIAL_USER;
+    return null;
   }
 }
 
@@ -64,6 +75,30 @@ export function saveStoredUser(user: UserAccount): void {
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
   } catch (e) {
     console.error('Error saving user to storage:', e);
+  }
+}
+
+export function deleteStoredUser(): void {
+  try {
+    localStorage.removeItem(USER_STORAGE_KEY);
+    localStorage.removeItem(BOOKINGS_STORAGE_KEY);
+    localStorage.removeItem(WALLET_STORAGE_KEY);
+    localStorage.removeItem('ticketlife_user_v1');
+    localStorage.removeItem('ticketlife_user_v2');
+    localStorage.removeItem('ticketlife_user_v3');
+    localStorage.removeItem('ticketlife_user_v4');
+    localStorage.removeItem('ticketlife_bookings_v1');
+    localStorage.removeItem('ticketlife_bookings_v2');
+    localStorage.removeItem('ticketlife_bookings_v3');
+    localStorage.removeItem('ticketlife_bookings_v4');
+    localStorage.removeItem('ticketlife_wallet_txns_v1');
+    localStorage.removeItem('ticketlife_wallet_txns_v2');
+    localStorage.removeItem('ticketlife_wallet_txns_v3');
+    localStorage.removeItem('ticketlife_wallet_txns_v4');
+    localStorage.removeItem('ticketlife_notifications_v1');
+    sessionStorage.removeItem('ticketlife_startup_seen');
+  } catch (e) {
+    console.error('Error deleting stored user:', e);
   }
 }
 
@@ -341,8 +376,6 @@ export function cancelBooking(bookingId: string, reason: string): { success: boo
   return { success: true, booking: updatedBooking };
 }
 
-const WALLET_STORAGE_KEY = 'ticketlife_wallet_txns_v2';
-
 export function getStoredWalletTransactions(): WalletTransaction[] {
   try {
     const raw = localStorage.getItem(WALLET_STORAGE_KEY);
@@ -366,7 +399,7 @@ export function saveWalletTransactions(txns: WalletTransaction[]): void {
 }
 
 export function addWalletFunds(amount: number, method: string): WalletTransaction {
-  const user = getStoredUser();
+  const user = getStoredUser() || { ...INITIAL_USER, id: `usr-${Date.now()}` };
   const newBalance = user.walletBalance + amount;
   user.walletBalance = newBalance;
   saveStoredUser(user);
@@ -388,7 +421,7 @@ export function addWalletFunds(amount: number, method: string): WalletTransactio
 }
 
 export function addWalletRefund(amount: number, description: string, refId?: string): WalletTransaction {
-  const user = getStoredUser();
+  const user = getStoredUser() || { ...INITIAL_USER, id: `usr-${Date.now()}` };
   const newBalance = user.walletBalance + amount;
   user.walletBalance = newBalance;
   saveStoredUser(user);
@@ -410,7 +443,7 @@ export function addWalletRefund(amount: number, description: string, refId?: str
 }
 
 export function deductWalletFunds(amount: number, description: string, refId?: string): WalletTransaction {
-  const user = getStoredUser();
+  const user = getStoredUser() || { ...INITIAL_USER, id: `usr-${Date.now()}` };
   const newBalance = Math.max(0, user.walletBalance - amount);
   user.walletBalance = newBalance;
   saveStoredUser(user);
@@ -430,3 +463,107 @@ export function deductWalletFunds(amount: number, description: string, refId?: s
   saveWalletTransactions(txns);
   return newTxn;
 }
+
+// ==================== PRICE ALERTS & ROUTE MONITORING ====================
+export function getStoredPriceAlerts(): PriceAlert[] {
+  try {
+    const raw = localStorage.getItem(PRICE_ALERTS_STORAGE_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch (e) {
+    return [];
+  }
+}
+
+export function saveStoredPriceAlerts(alerts: PriceAlert[]): void {
+  try {
+    localStorage.setItem(PRICE_ALERTS_STORAGE_KEY, JSON.stringify(alerts));
+  } catch (e) {
+    console.error('Error saving price alerts:', e);
+  }
+}
+
+export function createPriceAlert(
+  data: Omit<PriceAlert, 'id' | 'createdAt' | 'isActive'>
+): PriceAlert {
+  const alerts = getStoredPriceAlerts();
+  const newAlert: PriceAlert = {
+    ...data,
+    id: `alert-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    createdAt: new Date().toISOString(),
+    isActive: true,
+  };
+  alerts.unshift(newAlert);
+  saveStoredPriceAlerts(alerts);
+  return newAlert;
+}
+
+export function deletePriceAlert(id: string): PriceAlert[] {
+  const alerts = getStoredPriceAlerts().filter((a) => a.id !== id);
+  saveStoredPriceAlerts(alerts);
+  return alerts;
+}
+
+export function togglePriceAlert(id: string): PriceAlert[] {
+  const alerts = getStoredPriceAlerts().map((a) =>
+    a.id === id ? { ...a, isActive: !a.isActive } : a
+  );
+  saveStoredPriceAlerts(alerts);
+  return alerts;
+}
+
+/**
+ * Evaluates transport options against active price alerts.
+ * Returns newly triggered matches (where option price <= alert threshold).
+ */
+export function evaluatePriceAlerts(
+  options: TransportOption[],
+  customAlerts?: PriceAlert[]
+): { triggeredAlert: PriceAlert; matchingOption: TransportOption }[] {
+  const alerts = customAlerts || getStoredPriceAlerts();
+  const activeAlerts = alerts.filter((a) => a.isActive);
+  const matches: { triggeredAlert: PriceAlert; matchingOption: TransportOption }[] = [];
+  let alertsChanged = false;
+
+  for (const alert of activeAlerts) {
+    const normOrigin = (alert.origin || '').toLowerCase().trim();
+    const normDest = (alert.destination || '').toLowerCase().trim();
+
+    // Find options matching route and category with price <= targetPrice
+    const matchedOption = options.find((opt) => {
+      const matchCat = !alert.category || opt.category === alert.category;
+      const matchOrig =
+        !normOrigin ||
+        opt.origin.toLowerCase().includes(normOrigin) ||
+        (alert.originCode && opt.originCode.toLowerCase() === alert.originCode.toLowerCase());
+      const matchDest =
+        !normDest ||
+        opt.destination.toLowerCase().includes(normDest) ||
+        (alert.destCode && opt.destCode.toLowerCase() === alert.destCode.toLowerCase());
+      const isPriceBelow = opt.price <= alert.targetPrice;
+      return matchCat && matchOrig && matchDest && isPriceBelow;
+    });
+
+    if (matchedOption) {
+      // Check if we haven't already notified for this exact match and price
+      const alreadyTriggeredForThis =
+        alert.matchedOptionId === matchedOption.id &&
+        alert.lastTriggeredPrice === matchedOption.price;
+
+      if (!alreadyTriggeredForThis) {
+        alert.lastTriggeredPrice = matchedOption.price;
+        alert.lastTriggeredAt = new Date().toISOString();
+        alert.matchedOptionId = matchedOption.id;
+        alertsChanged = true;
+        matches.push({ triggeredAlert: alert, matchingOption: matchedOption });
+      }
+    }
+  }
+
+  if (alertsChanged) {
+    saveStoredPriceAlerts(alerts);
+  }
+
+  return matches;
+}
+

@@ -9,8 +9,9 @@ import {
   SlidersHorizontal,
   ChevronRight,
   AlertCircle,
+  Bell,
 } from 'lucide-react';
-import { SearchFilterState, TransportOption } from '../types/travel';
+import { SearchFilterState, TransportCategory, TransportOption } from '../types/travel';
 
 interface SearchResultsListProps {
   options: TransportOption[];
@@ -18,6 +19,14 @@ interface SearchResultsListProps {
   onUpdateFilters: (newFilters: Partial<SearchFilterState>) => void;
   onSelectOptionToBook: (option: TransportOption) => void;
   onSelectOptionToTrack: (option: TransportOption) => void;
+  onOpenSetPriceAlert?: (routeInfo?: {
+    origin: string;
+    originCode?: string;
+    destination: string;
+    destCode?: string;
+    category: TransportCategory;
+    currentPrice?: number;
+  }) => void;
 }
 
 export const SearchResultsList: React.FC<SearchResultsListProps> = ({
@@ -26,11 +35,54 @@ export const SearchResultsList: React.FC<SearchResultsListProps> = ({
   onUpdateFilters,
   onSelectOptionToBook,
   onSelectOptionToTrack,
+  onOpenSetPriceAlert,
 }) => {
   const [selectedFareDetailId, setSelectedFareDetailId] = useState<string | null>(null);
 
   return (
     <div className="w-full">
+      {/* Route Price Watch Banner */}
+      <div className="mb-6 p-4 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent dark:from-amber-500/15 rounded-2xl border border-amber-200 dark:border-amber-900/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-500 text-stone-950 flex items-center justify-center font-bold shadow-xs shrink-0">
+            <Bell className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-black text-stone-900 dark:text-white text-sm">
+                Track Fares for {filters.origin || 'Route'} → {filters.destination || 'Destination'}
+              </span>
+              <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-amber-100 dark:bg-amber-950/80 text-amber-900 dark:text-amber-300">
+                Fare Drop Alert
+              </span>
+            </div>
+            <p className="text-[11px] text-stone-500 dark:text-stone-400 mt-0.5">
+              Set a price threshold. You'll receive instant in-app and Gmail notifications the second prices fall.
+            </p>
+          </div>
+        </div>
+
+        {onOpenSetPriceAlert && (
+          <button
+            type="button"
+            onClick={() =>
+              onOpenSetPriceAlert({
+                origin: filters.origin,
+                originCode: filters.originCode,
+                destination: filters.destination,
+                destCode: filters.destCode,
+                category: filters.category,
+                currentPrice: options.length > 0 ? Math.min(...options.map((o) => o.price)) : undefined,
+              })
+            }
+            className="px-4 py-2 bg-stone-900 hover:bg-stone-800 dark:bg-amber-500 dark:hover:bg-amber-400 text-white dark:text-stone-950 font-black rounded-xl text-xs transition-colors shrink-0 flex items-center justify-center gap-1.5 shadow-xs"
+          >
+            <Bell className="w-3.5 h-3.5" />
+            <span>Set Price Alert</span>
+          </button>
+        )}
+      </div>
+
       {/* Controls & Sorter Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800 mb-6">
         <div>
@@ -246,6 +298,25 @@ export const SearchResultsList: React.FC<SearchResultsListProps> = ({
 
                     {/* Action buttons */}
                     <div className="mt-4 flex items-center gap-2 w-full lg:w-auto">
+                      {onOpenSetPriceAlert && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onOpenSetPriceAlert({
+                              origin: item.origin,
+                              originCode: item.originCode,
+                              destination: item.destination,
+                              destCode: item.destCode,
+                              category: item.category,
+                              currentPrice: item.price,
+                            })
+                          }
+                          className="p-2 text-stone-500 dark:text-stone-400 hover:text-amber-600 dark:hover:text-amber-400 bg-stone-100 dark:bg-stone-800 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg transition-colors"
+                          title="Set Price Alert for this route"
+                        >
+                          <Bell className="w-4 h-4" />
+                        </button>
+                      )}
                       {item.liveStatus && (
                         <button
                           onClick={() => onSelectOptionToTrack(item)}

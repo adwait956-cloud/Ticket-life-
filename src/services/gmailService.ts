@@ -31,35 +31,7 @@ function base64UrlEncode(str: string): string {
 export function getStoredNotificationLogs(): EmailNotificationLog[] {
   try {
     const raw = localStorage.getItem(NOTIFICATIONS_STORAGE_KEY);
-    if (!raw) {
-      // Seed default initial logs for adwait956@gmail.com
-      const initialLogs: EmailNotificationLog[] = [
-        {
-          id: 'notif-1',
-          type: 'account_created',
-          recipientEmail: 'adwait956@gmail.com',
-          senderEmail: 'adwait956@gmail.com',
-          subject: 'Welcome to Ticket Life! Your Travel Super App Account is Active',
-          timestamp: new Date(Date.now() - 86400000 * 2).toISOString(),
-          status: 'sent',
-          gmailMessageId: '18b901fc882104a9',
-          meta: { promoCode: 'FIRSTTRIP' },
-        },
-        {
-          id: 'notif-2',
-          type: 'travel_booking',
-          recipientEmail: 'adwait956@gmail.com',
-          senderEmail: 'adwait956@gmail.com',
-          subject: 'Confirmed Ticket: Chennai - Bengaluru Vande Bharat Express (TL-RAIL-90218) - Ticket Life',
-          timestamp: new Date(Date.now() - 86400000).toISOString(),
-          status: 'sent',
-          gmailMessageId: '18ba4491aa9910c2',
-          meta: { pnr: '284-9182903', ref: 'TL-RAIL-90218' },
-        },
-      ];
-      localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(initialLogs));
-      return initialLogs;
-    }
+    if (!raw) return [];
     return JSON.parse(raw);
   } catch (e) {
     return [];
@@ -108,7 +80,7 @@ async function sendRawGmailMessage(
   const encodedSubject = encodeHeaderUtf8(subject);
 
   const rawMessage = [
-    `From: Ticket Life <adwait956@gmail.com>`,
+    `From: Ticket Life <me>`,
     `To: ${recipientEmail}`,
     `Subject: ${encodedSubject}`,
     `MIME-Version: 1.0`,
@@ -189,7 +161,7 @@ export async function sendAccountCreatedNotification(
       </p>
     </div>
     <div style="padding: 16px 24px; background-color: #0f172a; color: #94a3b8; font-size: 11px; text-align: center;">
-      Notification sent from adwait956@gmail.com · Ticket Life Technologies
+      Notification sent from notifications@ticketlife.com · Ticket Life Technologies
     </div>
   </div>
 </body>
@@ -209,7 +181,7 @@ export async function sendAccountCreatedNotification(
         id: `notif-${Date.now()}`,
         type: 'account_created',
         recipientEmail,
-        senderEmail: 'adwait956@gmail.com',
+        senderEmail: 'notifications@ticketlife.com',
         subject,
         timestamp: new Date().toISOString(),
         status: 'failed',
@@ -224,7 +196,7 @@ export async function sendAccountCreatedNotification(
     id: `notif-${Date.now()}`,
     type: 'account_created',
     recipientEmail,
-    senderEmail: 'adwait956@gmail.com',
+    senderEmail: 'notifications@ticketlife.com',
     subject,
     timestamp: new Date().toISOString(),
     status: sendStatus,
@@ -273,7 +245,7 @@ export async function sendForgotPasswordNotification(
       </p>
     </div>
     <div style="padding: 16px 24px; background-color: #0f172a; color: #94a3b8; font-size: 11px; text-align: center;">
-      Automated security alert from adwait956@gmail.com · Ticket Life Security Operations
+      Automated security alert from notifications@ticketlife.com · Ticket Life Security Operations
     </div>
   </div>
 </body>
@@ -293,7 +265,7 @@ export async function sendForgotPasswordNotification(
         id: `notif-${Date.now()}`,
         type: 'forgot_password',
         recipientEmail,
-        senderEmail: 'adwait956@gmail.com',
+        senderEmail: 'notifications@ticketlife.com',
         subject,
         timestamp: new Date().toISOString(),
         status: 'failed',
@@ -308,7 +280,7 @@ export async function sendForgotPasswordNotification(
     id: `notif-${Date.now()}`,
     type: 'forgot_password',
     recipientEmail,
-    senderEmail: 'adwait956@gmail.com',
+    senderEmail: 'notifications@ticketlife.com',
     subject,
     timestamp: new Date().toISOString(),
     status: sendStatus,
@@ -377,7 +349,7 @@ export async function sendLoginSecurityAlertNotification(
       </p>
     </div>
     <div style="padding: 16px 24px; background-color: #0f172a; color: #94a3b8; font-size: 11px; text-align: center;">
-      Security notification automatically dispatched from adwait956@gmail.com · Ticket Life Security Operations
+      Security notification automatically dispatched from notifications@ticketlife.com · Ticket Life Security Operations
     </div>
   </div>
 </body>
@@ -398,12 +370,120 @@ export async function sendLoginSecurityAlertNotification(
     id: `notif-${Date.now()}`,
     type: 'login_alert',
     recipientEmail,
-    senderEmail: 'adwait956@gmail.com',
+    senderEmail: 'notifications@ticketlife.com',
     subject,
     timestamp: new Date().toISOString(),
     status: 'sent',
     gmailMessageId: msgId,
     meta: { userName, loginTime },
+  });
+
+  return { id: msgId };
+}
+
+/**
+ * 2c. Price Drop Alert Email Notification
+ * Dispatched automatically when a route price drops below the user's set threshold
+ */
+export async function sendPriceDropAlertNotification(
+  recipientEmail: string,
+  route: string,
+  category: string,
+  currentPrice: number,
+  targetPrice: number,
+  serviceTitle: string,
+  accessToken?: string | null
+): Promise<{ id: string; threadId?: string }> {
+  const alertTime = new Date().toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    dateStyle: 'medium',
+    timeStyle: 'medium',
+  });
+  const savings = Math.max(0, targetPrice - currentPrice);
+  const subject = `🔥 Price Drop Alert: ${route} now ₹${currentPrice.toLocaleString('en-IN')} (Target: ₹${targetPrice.toLocaleString('en-IN')})`;
+
+  const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 24px; color: #0f172a;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+    <div style="background-color: #0f172a; padding: 24px; color: #ffffff;">
+      <div style="font-size: 20px; font-weight: 800; letter-spacing: -0.5px; color: #f59e0b;">TICKET LIFE · PRICE WATCH</div>
+      <div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">Automated Fare Drop Notification</div>
+    </div>
+    <div style="padding: 24px;">
+      <div style="display: inline-block; background-color: #ecfdf5; color: #059669; font-size: 11px; font-weight: 800; text-transform: uppercase; padding: 4px 10px; border-radius: 9999px; margin-bottom: 12px;">
+        Price Threshold Hit
+      </div>
+      <h2 style="font-size: 20px; font-weight: 800; color: #0f172a; margin: 0 0 8px 0;">Great News! Fare Dropped on ${route}</h2>
+      <p style="font-size: 13px; color: #475569; line-height: 1.6; margin: 0 0 16px 0;">
+        A verified travel option is now available below your price alert target of <strong>₹${targetPrice.toLocaleString('en-IN')}</strong>.
+      </p>
+
+      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; margin-bottom: 20px;">
+        <table width="100%" cellpadding="6" cellspacing="0" style="font-size: 13px; color: #334155;">
+          <tr>
+            <td style="font-weight: 700; color: #64748b; width: 140px;">Route:</td>
+            <td><strong>${route}</strong></td>
+          </tr>
+          <tr>
+            <td style="font-weight: 700; color: #64748b;">Service:</td>
+            <td>${serviceTitle} (${category.toUpperCase()})</td>
+          </tr>
+          <tr>
+            <td style="font-weight: 700; color: #64748b;">Current Live Fare:</td>
+            <td style="font-size: 18px; font-weight: 900; color: #059669;">₹${currentPrice.toLocaleString('en-IN')}</td>
+          </tr>
+          <tr>
+            <td style="font-weight: 700; color: #64748b;">Your Target:</td>
+            <td>₹${targetPrice.toLocaleString('en-IN')}</td>
+          </tr>
+          ${savings > 0 ? `
+          <tr>
+            <td style="font-weight: 700; color: #64748b;">You Save:</td>
+            <td style="font-weight: 800; color: #059669;">₹${savings.toLocaleString('en-IN')} under threshold</td>
+          </tr>
+          ` : ''}
+          <tr>
+            <td style="font-weight: 700; color: #64748b;">Alert Detected:</td>
+            <td>${alertTime} (IST)</td>
+          </tr>
+        </table>
+      </div>
+
+      <p style="font-size: 12px; color: #64748b; line-height: 1.5; margin: 0 0 16px 0;">
+        Fares are dynamic and subject to seat availability. We recommend booking immediately to lock in this verified rate.
+      </p>
+    </div>
+    <div style="padding: 16px 24px; background-color: #0f172a; color: #94a3b8; font-size: 11px; text-align: center;">
+      Price alert monitored and dispatched by Ticket Life Technologies.
+    </div>
+  </div>
+</body>
+</html>
+  `;
+
+  let msgId = `sim-price-drop-${Date.now()}`;
+  if (accessToken && recipientEmail) {
+    try {
+      const res = await sendRawGmailMessage(recipientEmail, subject, htmlContent, accessToken);
+      msgId = res.id;
+    } catch (e) {
+      console.warn('Gmail API send error for price alert:', e);
+    }
+  }
+
+  saveNotificationLog({
+    id: `notif-${Date.now()}`,
+    type: 'price_alert',
+    recipientEmail: recipientEmail || 'Passenger',
+    senderEmail: 'notifications@ticketlife.com',
+    subject,
+    timestamp: new Date().toISOString(),
+    status: 'sent',
+    gmailMessageId: msgId,
+    meta: { route, category, currentPrice, targetPrice, serviceTitle },
   });
 
   return { id: msgId };
@@ -575,7 +655,7 @@ export async function sendTicketEmail(
     id: `notif-${Date.now()}`,
     type: 'travel_booking',
     recipientEmail,
-    senderEmail: 'adwait956@gmail.com',
+    senderEmail: 'notifications@ticketlife.com',
     subject,
     timestamp: new Date().toISOString(),
     status: 'sent',

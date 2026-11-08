@@ -25,7 +25,7 @@ export const GmailConfirmationModal: React.FC<GmailConfirmationModalProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const [recipient, setRecipient] = useState(currentUserEmail || 'adwait956@gmail.com');
+  const [recipient, setRecipient] = useState(currentUserEmail || '');
   const [isSending, setIsSending] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [sendSuccessId, setSendSuccessId] = useState<string | null>(null);

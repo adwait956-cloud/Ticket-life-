@@ -216,7 +216,24 @@ export interface WalletTransaction {
   paymentMethod?: string;
 }
 
-export type NotificationType = 'account_created' | 'forgot_password' | 'travel_booking' | 'login_alert';
+export type NotificationType = 'account_created' | 'forgot_password' | 'travel_booking' | 'login_alert' | 'price_alert';
+
+export interface PriceAlert {
+  id: string;
+  category: TransportCategory;
+  origin: string;
+  originCode?: string;
+  destination: string;
+  destCode?: string;
+  targetPrice: number;
+  currentLowestPrice?: number;
+  serviceTitle?: string;
+  createdAt: string;
+  isActive: boolean;
+  lastTriggeredPrice?: number;
+  lastTriggeredAt?: string;
+  matchedOptionId?: string;
+}
 
 export interface EmailNotificationLog {
   id: string;
