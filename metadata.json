@@ -1,0 +1,6 @@
+{
+  "name": "Ticket Life - Travel & Ticket Booking Super App",
+  "description": "Discover, compare, and book real travel across cars, autos, bikes, trains, airplanes, and buses with verified tickets and secure payments.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
