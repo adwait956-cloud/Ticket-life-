@@ -3,6 +3,7 @@
   "appId": "1:715010484794:web:8dfd6cd39f300d5311a303",
   "apiKey": "AIzaSyDZccATWPa0nlUDZJelDrnY6bKDUS6-OVY",
   "authDomain": "gen-lang-client-0560606821.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-ticketlife-0520c904-5b40-4ea4-9ef2-cfc9ca6758c0",
   "storageBucket": "gen-lang-client-0560606821.firebasestorage.app",
   "messagingSenderId": "715010484794",
   "measurementId": "",

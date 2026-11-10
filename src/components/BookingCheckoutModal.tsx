@@ -16,6 +16,7 @@ import {
   Clock,
   Printer,
   Mail,
+  Fingerprint,
 } from 'lucide-react';
 import {
   BookingRecord,
@@ -26,6 +27,13 @@ import {
 } from '../types/travel';
 import { createConfirmedBooking } from '../services/api';
 import { POPULAR_OFFERS } from '../data/mockData';
+import {
+  isBiometricsSupported,
+  hasEnrolledBiometrics,
+  getPrimaryBiometricUser,
+  StoredBiometricCredential,
+} from '../services/biometricAuth';
+import { FingerprintScannerModal } from './FingerprintScannerModal';
 
 interface BookingCheckoutModalProps {
   option: TransportOption;
@@ -95,7 +103,30 @@ export const BookingCheckoutModal: React.FC<BookingCheckoutModalProps> = ({
 
   // Processing state
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [isBiometricPaying, setIsBiometricPaying] = useState(false);
+  const [biometricError, setBiometricError] = useState('');
   const [confirmedBooking, setConfirmedBooking] = useState<BookingRecord | null>(null);
+  const [checkoutAuthError, setCheckoutAuthError] = useState('');
+
+  // Fingerprint Scanner modal state for payment
+  const [isFingerprintScannerOpen, setIsFingerprintScannerOpen] = useState(false);
+  const [scannerUser, setScannerUser] = useState<StoredBiometricCredential | null>(null);
+
+  const handleBiometricPayment = () => {
+    setBiometricError('');
+    const primary = getPrimaryBiometricUser();
+    if (!primary) {
+      setBiometricError('No biometric passkey registered on this device. Please register in your Account or Create Account.');
+      return;
+    }
+    setScannerUser(primary);
+    setIsFingerprintScannerOpen(true);
+  };
+
+  const handleFingerprintPaySuccess = () => {
+    setIsFingerprintScannerOpen(false);
+    handleCompletePayment();
+  };
 
   // Fare calculations
   const count = passengers.length;
@@ -426,6 +457,14 @@ export const BookingCheckoutModal: React.FC<BookingCheckoutModalProps> = ({
                 )}
               </div>
 
+              {/* Account check banner if not authenticated */}
+              {checkoutAuthError && (
+                <div className="p-3.5 bg-rose-50 dark:bg-rose-950/40 rounded-xl border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs font-bold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{checkoutAuthError}</span>
+                </div>
+              )}
+
               {/* Step 1 Actions */}
               <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-800">
                 <div>
@@ -436,7 +475,15 @@ export const BookingCheckoutModal: React.FC<BookingCheckoutModalProps> = ({
                 </div>
 
                 <button
-                  onClick={() => setCurrentStep(2)}
+                  type="button"
+                  onClick={() => {
+                    setCheckoutAuthError('');
+                    if (!user || !user.email || user.email.trim().length === 0) {
+                      setCheckoutAuthError('Account create nahi hua hai. Ticket book karne ke liye kripya pehle Account create karein.');
+                      return;
+                    }
+                    setCurrentStep(2);
+                  }}
                   className="px-6 py-2.5 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-lg transition-colors text-xs flex items-center gap-2 shadow-sm shadow-sky-600/20"
                 >
                   <span>Proceed to Payment</span>
@@ -672,8 +719,16 @@ export const BookingCheckoutModal: React.FC<BookingCheckoutModalProps> = ({
                 </div>
               )}
 
+              {/* Biometric error notice if scan was cancelled */}
+              {biometricError && (
+                <div className="p-3 bg-rose-50 dark:bg-rose-950/40 rounded-xl border border-rose-200 dark:border-rose-800 text-xs text-rose-700 dark:text-rose-300 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{biometricError}</span>
+                </div>
+              )}
+
               {/* Step 2 Actions */}
-              <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-800">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setCurrentStep(1)}
@@ -682,24 +737,39 @@ export const BookingCheckoutModal: React.FC<BookingCheckoutModalProps> = ({
                   Back to Details
                 </button>
 
-                <button
-                  type="button"
-                  disabled={isProcessingPayment}
-                  onClick={handleCompletePayment}
-                  className="px-6 py-2.5 bg-sky-600 hover:bg-sky-500 disabled:bg-slate-400 text-white font-bold rounded-lg transition-colors text-xs flex items-center gap-2 shadow-sm shadow-sky-600/20"
-                >
-                  {isProcessingPayment ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      <span>Verifying with Provider...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Lock className="w-3.5 h-3.5" />
-                      <span>Pay ₹{grandTotal.toLocaleString('en-IN')} & Confirm Ticket</span>
-                    </>
-                  )}
-                </button>
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    disabled={isProcessingPayment || isBiometricPaying}
+                    onClick={handleBiometricPayment}
+                    className="flex-1 sm:flex-none px-4 py-2.5 bg-amber-500 hover:bg-amber-400 disabled:bg-stone-300 text-stone-950 font-black rounded-lg transition-all text-xs flex items-center justify-center gap-1.5 shadow-sm active:scale-[0.99] cursor-pointer"
+                    title="Authorize payment with Touch ID / Face ID"
+                  >
+                    <Fingerprint className="w-4 h-4" />
+                    <span>
+                      {isBiometricPaying ? 'Scanning Biometrics...' : '1-Tap Biometric Pay'}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isProcessingPayment || isBiometricPaying}
+                    onClick={handleCompletePayment}
+                    className="flex-1 sm:flex-none px-6 py-2.5 bg-sky-600 hover:bg-sky-500 disabled:bg-slate-400 text-white font-bold rounded-lg transition-colors text-xs flex items-center justify-center gap-2 shadow-sm shadow-sky-600/20"
+                  >
+                    {isProcessingPayment ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        <span>Verifying with Provider...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Lock className="w-3.5 h-3.5" />
+                        <span>Pay ₹{grandTotal.toLocaleString('en-IN')} & Confirm</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -784,6 +854,19 @@ export const BookingCheckoutModal: React.FC<BookingCheckoutModalProps> = ({
           )}
         </div>
       </div>
+
+      {/* Interactive Fingerprint Scanner for 1-Tap Biometric Payment */}
+      {isFingerprintScannerOpen && (
+        <FingerprintScannerModal
+          mode="payment"
+          paymentAmount={grandTotal}
+          credentialUser={scannerUser}
+          onSuccess={handleFingerprintPaySuccess}
+          onCancel={() => {
+            setIsFingerprintScannerOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 };

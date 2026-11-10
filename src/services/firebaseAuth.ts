@@ -6,12 +6,32 @@ import {
   onAuthStateChanged,
   signOut,
   User,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendEmailVerification,
+  sendPasswordResetEmail,
+  updateProfile,
+  applyActionCode,
 } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
+import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 
 // Initialize Firebase only once
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
+export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId || '(default)');
+
+// Validate connection to Firestore
+export async function testFirestoreConnection() {
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.error('Please check your Firebase configuration.');
+    }
+  }
+}
+testFirestoreConnection();
 
 // Configure Google Auth Provider with requested Gmail scopes
 export const googleProvider = new GoogleAuthProvider();
@@ -33,8 +53,19 @@ export const GMAIL_SCOPES = [
   'https://www.googleapis.com/auth/gmail.settings.sharing',
 ];
 
+export const CALENDAR_SCOPES = [
+  'https://www.googleapis.com/auth/calendar',
+  'https://www.googleapis.com/auth/calendar.events',
+  'https://www.googleapis.com/auth/calendar.readonly',
+];
+
+export const WORKSPACE_SCOPES = [
+  ...GMAIL_SCOPES,
+  ...CALENDAR_SCOPES,
+];
+
 // Add scopes to provider
-GMAIL_SCOPES.forEach((scope) => {
+WORKSPACE_SCOPES.forEach((scope) => {
   googleProvider.addScope(scope);
 });
 
@@ -98,4 +129,81 @@ export const setCachedAccessToken = (token: string | null) => {
 export const logoutGoogle = async () => {
   await signOut(auth);
   cachedAccessToken = null;
+};
+
+/**
+ * Registers a new user via Firebase Authentication and triggers
+ * the official Email Verification template shown in the Firebase Console.
+ */
+export const firebaseRegisterUser = async (
+  email: string,
+  pass: string,
+  displayName: string
+): Promise<{ user: User; verificationSent: boolean }> => {
+  const cred = await createUserWithEmailAndPassword(auth, email, pass);
+  if (displayName) {
+    try {
+      await updateProfile(cred.user, { displayName });
+    } catch (e) {
+      console.warn('Could not set displayName on Firebase user:', e);
+    }
+  }
+
+  let verificationSent = false;
+  try {
+    await sendEmailVerification(cred.user);
+    verificationSent = true;
+  } catch (err) {
+    console.warn('Firebase sendEmailVerification notice:', err);
+  }
+
+  return { user: cred.user, verificationSent };
+};
+
+/**
+ * Signs in an existing user with Firebase Email and Password credentials.
+ */
+export const firebaseLoginUser = async (email: string, pass: string): Promise<User> => {
+  const cred = await signInWithEmailAndPassword(auth, email, pass);
+  return cred.user;
+};
+
+/**
+ * Dispatches an official Firebase Password Reset email to the user
+ * from noreply@ticket-life-c4b76.firebaseapp.com.
+ */
+export const firebaseSendPasswordReset = async (email: string): Promise<void> => {
+  await sendPasswordResetEmail(auth, email);
+};
+
+/**
+ * Re-sends official email verification to the currently authenticated Firebase user.
+ */
+export const firebaseSendEmailVerification = async (user: User): Promise<void> => {
+  await sendEmailVerification(user);
+};
+
+/**
+ * Verifies email using Firebase oobCode (from the verification link).
+ */
+export const firebaseVerifyEmailWithCode = async (codeOrUrl: string): Promise<void> => {
+  let oobCode = codeOrUrl.trim();
+  if (oobCode.includes('oobCode=')) {
+    const match = oobCode.match(/oobCode=([^&]+)/);
+    if (match && match[1]) {
+      oobCode = match[1];
+    }
+  }
+  await applyActionCode(auth, oobCode);
+};
+
+export const checkCurrentUserEmailVerified = async (): Promise<boolean> => {
+  if (!auth.currentUser) return false;
+  await auth.currentUser.reload();
+  return auth.currentUser.emailVerified;
+};
+
+export const reloadFirebaseUser = async (user: User): Promise<User> => {
+  await user.reload();
+  return auth.currentUser || user;
 };

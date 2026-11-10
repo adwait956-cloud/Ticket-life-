@@ -146,6 +146,8 @@ export interface BookingRecord {
     rating: number;
     otp: string;
   };
+  googleCalendarEventId?: string;
+  calendarSyncedAt?: string;
 }
 
 export interface UserAccount {
@@ -156,6 +158,8 @@ export interface UserAccount {
   role: 'passenger' | 'admin';
   savedPassengers: PassengerInfo[];
   walletBalance: number;
+  autoCalendarSync?: boolean;
+  googleCalendarConnected?: boolean;
 }
 
 export interface SupportTicket {

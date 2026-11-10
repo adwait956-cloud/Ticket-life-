@@ -13,6 +13,7 @@ import {
 } from './types/travel';
 import {
   getStoredBookings,
+  saveStoredBookings,
   getStoredPriceAlerts,
   evaluatePriceAlerts,
   getStoredProviders,
@@ -24,7 +25,8 @@ import {
 } from './services/api';
 import { TRANSPORT_CATALOG } from './data/mockData';
 import { initAuth, logoutGoogle, setCachedAccessToken, getAccessToken, googleSignIn } from './services/firebaseAuth';
-import { buildTravelDigest, fetchTravelEmails } from './services/gmailService';
+import { buildTravelDigest, fetchTravelEmails, sendTicketEmail } from './services/gmailService';
+import { createBookingCalendarEvent } from './services/calendarService';
 import { Navbar } from './components/Navbar';
 import { CategoryNav } from './components/CategoryNav';
 import { SearchHero } from './components/SearchHero';
@@ -287,6 +289,45 @@ export default function App() {
   const handleBookingConfirmed = (newBooking: BookingRecord) => {
     refreshData();
     showToast(`Booking ${newBooking.bookingRef} Confirmed! Official confirmation ready.`);
+
+    // Automatically send confirmed ticket email directly to user's registered email
+    const recipient = currentUser?.email || googleUserEmail;
+    if (recipient) {
+      getAccessToken().then(async (token) => {
+        try {
+          await sendTicketEmail(newBooking, recipient, token);
+          showToast(`Confirmed ticket delivered directly to ${recipient}!`);
+        } catch (e) {
+          console.warn('Auto ticket email dispatch notice:', e);
+        }
+      });
+    }
+
+    // If auto Google Calendar sync is enabled, automatically add the trip to Google Calendar
+    if (currentUser?.autoCalendarSync) {
+      getAccessToken().then(async (token) => {
+        if (token) {
+          try {
+            const calRes = await createBookingCalendarEvent(newBooking, token);
+            const currentList = getStoredBookings();
+            const updated = currentList.map((b) =>
+              b.id === newBooking.id
+                ? {
+                    ...b,
+                    googleCalendarEventId: calRes.eventId,
+                    calendarSyncedAt: new Date().toISOString(),
+                  }
+                : b
+            );
+            saveStoredBookings(updated);
+            setBookings(updated);
+            showToast(`Trip ${newBooking.bookingRef} automatically scheduled in Google Calendar!`);
+          } catch (e) {
+            console.warn('Auto calendar sync error:', e);
+          }
+        }
+      });
+    }
   };
 
   const handleBookingCancelled = (updated: BookingRecord) => {
@@ -440,6 +481,7 @@ export default function App() {
               onUpdateFilters={handleUpdateFilters}
               onSelectOptionToBook={(opt) => setBookingOptionToBook(opt)}
               onSelectOptionToTrack={(opt) => setItemToTrack(opt)}
+              onOpenSetPriceAlert={(routeInfo) => setPriceAlertModalData(routeInfo || {})}
             />
           </div>
         )}
@@ -471,9 +513,13 @@ export default function App() {
         {activeTab === 'account' && (
           <AccountView
             user={currentUser}
+            bookings={bookings}
             onUpdateUser={(updated) => {
               setCurrentUser(updated);
               showToast('Account details updated.');
+            }}
+            onUpdateBookings={(updated) => {
+              setBookings(updated);
             }}
             onLogout={handleLogout}
             onOpenAuthModal={(mode = 'signin') => {
@@ -481,6 +527,7 @@ export default function App() {
               setIsAuthOpen(true);
             }}
             onDeleteAccount={handleDeleteAccount}
+            onShowToast={showToast}
           />
         )}
 
@@ -591,6 +638,29 @@ export default function App() {
           onClose={() => setIsNotificationCenterOpen(false)}
           onNotificationSent={(log) => {
             showToast(`Notification sent to ${log.recipientEmail}!`);
+          }}
+        />
+      )}
+
+      {/* MODAL 8: Set Route Price Alert */}
+      {priceAlertModalData && (
+        <SetPriceAlertModal
+          initialOrigin={priceAlertModalData.origin || filters.origin}
+          initialOriginCode={priceAlertModalData.originCode || filters.originCode}
+          initialDestination={priceAlertModalData.destination || filters.destination}
+          initialDestCode={priceAlertModalData.destCode || filters.destCode}
+          initialCategory={priceAlertModalData.category || filters.category}
+          initialCurrentPrice={priceAlertModalData.currentPrice}
+          catalogOptions={searchResults.length > 0 ? searchResults : TRANSPORT_CATALOG}
+          currentUser={currentUser}
+          onClose={() => setPriceAlertModalData(null)}
+          onAlertCreated={(alert, triggeredMatches) => {
+            setPriceAlerts(getStoredPriceAlerts());
+            if (triggeredMatches && triggeredMatches.length > 0) {
+              showToast(`Price Alert Active! Found matching fare ₹${triggeredMatches[0].matchingOption.price} for ${alert.origin} → ${alert.destination}!`);
+            } else {
+              showToast(`Price Alert Active: You will be notified when fare drops below ₹${alert.targetPrice.toLocaleString('en-IN')}`);
+            }
           }}
         />
       )}

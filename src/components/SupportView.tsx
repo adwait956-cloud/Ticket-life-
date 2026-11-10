@@ -33,7 +33,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ user }) => {
 
     createSupportTicket({
       userId: user?.id || 'guest',
-      userEmail: user?.email || 'guest@ticketlife.travel',
+      userEmail: user?.email || 'adwait956@gmail.com',
       category: ticketCategory,
       bookingRef: bookingRefInput.trim() || undefined,
       subject: ticketSubject.trim(),
@@ -74,8 +74,8 @@ export const SupportView: React.FC<SupportViewProps> = ({ user }) => {
             <Mail className="w-4 h-4" />
           </div>
           <div className="font-bold text-slate-900 dark:text-white">Official Support Email</div>
-          <div className="text-slate-500 mt-0.5">support@ticketlife.travel</div>
-          <div className="text-sky-600 font-semibold mt-1">Response within 15 mins</div>
+          <div className="text-slate-500 mt-0.5 font-medium">adwait956@gmail.com</div>
+          <div className="text-sky-600 font-semibold mt-1">Direct Helpdesk Response</div>
         </div>
 
         <div className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">

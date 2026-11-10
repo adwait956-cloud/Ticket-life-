@@ -18,27 +18,43 @@ import {
   UserPlus,
   AlertTriangle,
   X,
+  Fingerprint,
 } from 'lucide-react';
-import { PassengerInfo, UserAccount } from '../types/travel';
+import { BookingRecord, PassengerInfo, UserAccount } from '../types/travel';
 import { saveStoredUser, deleteStoredUser } from '../services/api';
 import { PWAInstallButton } from './PWAInstallButton';
 import { sendForgotPasswordNotification } from '../services/gmailService';
 import { getAccessToken } from '../services/firebaseAuth';
+import { CalendarSync } from './CalendarSync';
+import {
+  isBiometricsSupported,
+  isPlatformBiometricAvailable,
+  hasEnrolledBiometrics,
+  getEnrolledBiometrics,
+  registerBiometricPasskey,
+  removeBiometricCredential,
+} from '../services/biometricAuth';
 
 interface AccountViewProps {
   user: UserAccount | null;
+  bookings: BookingRecord[];
   onUpdateUser: (updatedUser: UserAccount) => void;
+  onUpdateBookings: (updatedBookings: BookingRecord[]) => void;
   onLogout: () => void;
   onOpenAuthModal?: (mode?: 'signin' | 'signup') => void;
   onDeleteAccount: () => void;
+  onShowToast: (message: string) => void;
 }
 
 export const AccountView: React.FC<AccountViewProps> = ({
   user,
+  bookings,
   onUpdateUser,
+  onUpdateBookings,
   onLogout,
   onOpenAuthModal,
   onDeleteAccount,
+  onShowToast,
 }) => {
   // If no user or empty email, show unauthenticated gateway
   const isAuthenticated = Boolean(user && user.email && user.email.trim().length > 0);
@@ -49,6 +65,11 @@ export const AccountView: React.FC<AccountViewProps> = ({
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [securityNotice, setSecurityNotice] = useState('');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+
+  // Biometric Authentication (WebAuthn)
+  const [isBioEnrolling, setIsBioEnrolling] = useState(false);
+  const [enrolledBioList, setEnrolledBioList] = useState(() => getEnrolledBiometrics());
+  const [bioNotice, setBioNotice] = useState('');
 
   // New passenger fields
   const [newPaxName, setNewPaxName] = useState('');
@@ -296,6 +317,95 @@ export const AccountView: React.FC<AccountViewProps> = ({
           </div>
         </div>
 
+        {/* Web Authentication API: Biometric Face ID / Fingerprint Settings */}
+        <div className="p-4 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent rounded-xl border border-amber-500/30 dark:border-amber-500/40 space-y-3 text-xs">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                <Fingerprint className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="font-extrabold text-stone-900 dark:text-white flex items-center gap-2">
+                  <span>Biometric Authentication (Touch ID / Face ID / Fingerprint)</span>
+                  <span className="px-1.5 py-0.2 bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded text-[9px] font-bold">
+                    WebAuthn API
+                  </span>
+                </div>
+                <div className="text-[11px] text-stone-500 dark:text-stone-400">
+                  Enable fast 1-tap booking authorization & passwordless login on this device.
+                </div>
+              </div>
+            </div>
+
+            <span className={`text-[10px] uppercase font-black px-2 py-0.5 rounded ${
+              enrolledBioList.length > 0
+                ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60'
+                : 'text-stone-500 bg-stone-100 dark:bg-stone-800'
+            }`}>
+              {enrolledBioList.length > 0 ? 'Enrolled' : 'Not Enrolled'}
+            </span>
+          </div>
+
+          {bioNotice && (
+            <div className="p-2.5 bg-white dark:bg-stone-900 rounded-lg border border-stone-200 dark:border-stone-700 text-[11px] font-semibold text-stone-800 dark:text-stone-200">
+              {bioNotice}
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-amber-500/20">
+            <p className="text-[11px] text-stone-600 dark:text-stone-400 max-w-sm">
+              {enrolledBioList.length > 0
+                ? `Enrolled device: ${enrolledBioList[0].deviceLabel} (Created ${new Date(enrolledBioList[0].createdAt).toLocaleDateString()})`
+                : 'No fingerprint or Face ID enrolled on this device yet. Click below to register.'}
+            </p>
+
+            <div className="flex items-center gap-2">
+              {enrolledBioList.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    removeBiometricCredential(user.email);
+                    setEnrolledBioList(getEnrolledBiometrics());
+                    setBioNotice('Biometrics removed from this device.');
+                    if (onShowToast) onShowToast('Biometric passkey removed.');
+                  }}
+                  className="px-3 py-1.5 text-[11px] font-bold text-rose-600 hover:text-rose-700 border border-rose-200 dark:border-rose-800 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                >
+                  Remove Biometrics
+                </button>
+              )}
+
+              <button
+                type="button"
+                disabled={isBioEnrolling}
+                onClick={async () => {
+                  setIsBioEnrolling(true);
+                  setBioNotice('');
+                  try {
+                    const cred = await registerBiometricPasskey({
+                      id: user.id,
+                      email: user.email,
+                      fullName: user.fullName,
+                      phone: user.phone,
+                    });
+                    setEnrolledBioList(getEnrolledBiometrics());
+                    setBioNotice(`🎉 ${cred.deviceLabel} successfully enrolled for 1-tap booking and login!`);
+                    if (onShowToast) onShowToast('Biometrics successfully registered!');
+                  } catch (e: any) {
+                    setBioNotice(`⚠️ ${e.message || 'Could not enroll biometrics.'}`);
+                  } finally {
+                    setIsBioEnrolling(false);
+                  }
+                }}
+                className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-black text-xs rounded-lg transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <Fingerprint className="w-3.5 h-3.5" />
+                <span>{isBioEnrolling ? 'Scanning Hardware...' : enrolledBioList.length > 0 ? 'Re-enroll Biometrics' : 'Enroll Fingerprint / Face ID'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div className="flex justify-end pt-2">
           <button
             type="button"
@@ -307,6 +417,15 @@ export const AccountView: React.FC<AccountViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* GOOGLE CALENDAR SYNC & AUTOMATED EVENT CREATION TOGGLE */}
+      <CalendarSync
+        user={user}
+        bookings={bookings}
+        onUpdateUser={onUpdateUser}
+        onUpdateBookings={onUpdateBookings}
+        onShowToast={onShowToast}
+      />
 
       {/* Saved Frequent Co-Travelers Section */}
       <div className="p-6 bg-white dark:bg-stone-900 rounded-2xl border border-stone-200 dark:border-stone-800 shadow-xs space-y-5">

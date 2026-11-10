@@ -57,13 +57,6 @@ export function getStoredUser(): UserAccount | null {
     if (!parsed || !parsed.email || parsed.email.trim() === '') {
       return null;
     }
-    if (
-      parsed.fullName?.toLowerCase().includes('adwait') ||
-      parsed.email?.toLowerCase().includes('adwait')
-    ) {
-      deleteStoredUser();
-      return null;
-    }
     return parsed;
   } catch (e) {
     return null;
