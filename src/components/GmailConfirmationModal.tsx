@@ -42,7 +42,9 @@ export const GmailConfirmationModal: React.FC<GmailConfirmationModalProps> = ({
         // Need to authenticate with Google Auth with Gmail scopes
         const authRes = await googleSignIn();
         if (!authRes?.accessToken) {
-          throw new Error('Google Sign-In failed or was cancelled. Unable to obtain Gmail permissions.');
+          setErrorMessage('Google Sign-In was closed before granting Gmail permissions. Please try again.');
+          setIsSending(false);
+          return;
         }
         token = authRes.accessToken;
       }
@@ -52,7 +54,7 @@ export const GmailConfirmationModal: React.FC<GmailConfirmationModalProps> = ({
       setIsSending(false);
       onSuccess(res.id);
     } catch (err: any) {
-      console.error('Failed to send email:', err);
+      console.warn('Email dispatch notice:', err?.message || err);
       setErrorMessage(err.message || 'An error occurred while sending the email via Gmail API.');
       setIsSending(false);
     }

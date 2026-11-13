@@ -12,26 +12,17 @@ import {
   sendPasswordResetEmail,
   updateProfile,
   applyActionCode,
+  deleteUser,
 } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { getFirestore } from 'firebase/firestore';
+import { getDatabase, ref, get, remove } from 'firebase/database';
 
 // Initialize Firebase only once
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
+export const rtdb = getDatabase(app);
 export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId || '(default)');
-
-// Validate connection to Firestore
-export async function testFirestoreConnection() {
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error('Please check your Firebase configuration.');
-    }
-  }
-}
-testFirestoreConnection();
 
 // Configure Google Auth Provider with requested Gmail scopes
 export const googleProvider = new GoogleAuthProvider();
@@ -98,6 +89,9 @@ export const initAuth = (
 };
 
 export const googleSignIn = async (): Promise<{ user: User; accessToken: string } | null> => {
+  if (isSigningIn) {
+    return null;
+  }
   try {
     isSigningIn = true;
     const result = await signInWithPopup(auth, googleProvider);
@@ -111,7 +105,16 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
       accessToken: cachedAccessToken || '',
     };
   } catch (error: any) {
-    console.error('Google Sign In Error:', error);
+    const code = error?.code || '';
+    if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+      console.warn('Google Sign-In popup was closed by user.');
+      return null;
+    }
+    if (code === 'auth/popup-blocked') {
+      console.warn('Google Sign-In popup was blocked by the browser.');
+      throw new Error('Popup blocked by your browser. Please allow popups for this site and try again.');
+    }
+    console.warn('Google Sign-In notice:', error?.message || error);
     throw error;
   } finally {
     isSigningIn = false;
@@ -129,6 +132,48 @@ export const setCachedAccessToken = (token: string | null) => {
 export const logoutGoogle = async () => {
   await signOut(auth);
   cachedAccessToken = null;
+};
+
+/**
+ * Deletes the currently signed-in Firebase Auth account and cleans up its RTDB user node.
+ */
+export const firebaseDeleteCurrentUser = async (): Promise<void> => {
+  const current = auth.currentUser;
+  if (current) {
+    try {
+      await remove(ref(rtdb, `users/${current.uid}`));
+    } catch {
+      // ignore if node does not exist or rules restrict
+    }
+    try {
+      await deleteUser(current);
+    } catch (err) {
+      console.warn('Firebase deleteUser notice (signing out fallback):', err);
+      await signOut(auth).catch(() => {});
+    }
+  }
+  cachedAccessToken = null;
+};
+
+/**
+ * Removes any legacy adwait956 user records from Firebase Realtime Database if present.
+ */
+export const purgeAdwaitFromDatabase = async (): Promise<void> => {
+  try {
+    const snap = await get(ref(rtdb, 'users'));
+    const val = snap.val();
+    if (val && typeof val === 'object') {
+      for (const [key, entry] of Object.entries<any>(val)) {
+        const emailStr = String(entry?.email || '').toLowerCase();
+        const nameStr = String(entry?.fullName || entry?.name || '').toLowerCase();
+        if (emailStr.includes('adwait956') || nameStr.includes('adwait956') || key.toLowerCase().includes('adwait956')) {
+          await remove(ref(rtdb, `users/${key}`)).catch(() => {});
+        }
+      }
+    }
+  } catch {
+    // ignore if /users node is empty or restricted
+  }
 };
 
 /**

@@ -108,7 +108,7 @@ export const TicketPassModal: React.FC<TicketPassModalProps> = ({
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 bg-white dark:bg-stone-800/50 rounded-xl border border-stone-200 dark:border-stone-700/80 text-xs shadow-xs">
             <div>
               <div className="text-stone-400 uppercase font-bold text-[9px] tracking-widest">
-                {booking.category === 'trains' || booking.category === 'flights' ? 'Authorized PNR' : 'Ride Confirmation'}
+                Ride Confirmation
               </div>
               <div className="text-base font-black text-amber-700 dark:text-amber-400 font-mono tracking-tight mt-0.5">
                 {booking.pnrNumber || booking.providerRef}
@@ -295,8 +295,15 @@ export const TicketPassModal: React.FC<TicketPassModalProps> = ({
                 Taxes & Surcharges: <span className="font-mono font-bold text-stone-900 dark:text-stone-100">₹{booking.fareBreakdown.taxesAndGst.toLocaleString('en-IN')}</span>
               </div>
               <div className="font-extrabold text-stone-900 dark:text-white pt-1 border-t border-stone-200 dark:border-stone-700">
-                Total Paid: ₹{booking.fareBreakdown.totalAmount.toLocaleString('en-IN')} via {booking.paymentMethod}
+                {booking.paymentStatus === 'pay_after_ride'
+                  ? `Pay Driver After Ride: ₹${booking.fareBreakdown.totalAmount.toLocaleString('en-IN')} (Cash / Direct UPI)`
+                  : `Total Paid: ₹${booking.fareBreakdown.totalAmount.toLocaleString('en-IN')} via ${booking.paymentMethod}`}
               </div>
+              {booking.startOtpVerified && (
+                <div className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                  ✓ Start OTP Verified · Live Route Active
+                </div>
+              )}
             </div>
 
             {/* Authentic SVG QR Code Presentation */}
@@ -329,10 +336,14 @@ export const TicketPassModal: React.FC<TicketPassModalProps> = ({
             <button
               type="button"
               onClick={() => onOpenLiveTracker(booking)}
-              className="px-4 py-2 text-xs font-bold text-stone-800 dark:text-stone-200 bg-stone-100 dark:bg-stone-800 rounded-lg hover:bg-stone-200 transition-colors flex items-center gap-1.5 border border-stone-200 dark:border-stone-700"
+              className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
             >
-              <Radio className="w-3.5 h-3.5 text-amber-500" />
-              <span>Track Live Radar</span>
+              <Radio className="w-3.5 h-3.5" />
+              <span>
+                {booking.bookingStatus === 'confirmed'
+                  ? 'Enter OTP & Start Live Map'
+                  : 'Open Live Route Map'}
+              </span>
             </button>
             <button
               type="button"

@@ -14,9 +14,12 @@ import {
   ExternalLink,
   Save,
   MessageSquare,
+  Banknote,
 } from 'lucide-react';
 import { BookingRecord, ProviderStatus, SupportTicket } from '../types/travel';
 import { updateProviderStatus } from '../services/api';
+import { DriverPayoutsSection } from './DriverPayoutsSection';
+import { calculateDriverPayoutSummaries } from '../services/driverPayoutsService';
 
 interface AdminDashboardProps {
   bookings: BookingRecord[];
@@ -33,9 +36,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onRefreshData,
   onOpenCancelModal,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'providers' | 'bookings' | 'support'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'payouts' | 'providers' | 'bookings' | 'support'>('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [updatingProviderId, setUpdatingProviderId] = useState<string | null>(null);
+
+  // Driver Payouts Statistics
+  const driverSummaries = calculateDriverPayoutSummaries(bookings);
+  const totalDriverEarnings = driverSummaries.reduce((sum, d) => sum + d.totalEarnings, 0);
+  const totalPendingPayouts = driverSummaries.reduce((sum, d) => sum + d.pendingAmount, 0);
+  const totalSettledPayouts = driverSummaries.reduce((sum, d) => sum + d.settledAmount, 0);
+  const pendingDriversCount = driverSummaries.filter((d) => d.pendingAmount > 0).length;
 
   // Statistics
   const totalRevenue = bookings.reduce((sum, b) => (b.bookingStatus !== 'cancelled' ? sum + b.fareBreakdown.totalAmount : sum), 0);
@@ -83,7 +93,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
 
         {/* Tab switcher */}
-        <div className="flex items-center gap-1 p-1 bg-slate-800 rounded-lg border border-slate-700 text-xs font-bold">
+        <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-800 rounded-lg border border-slate-700 text-xs font-bold">
           <button
             onClick={() => setActiveTab('overview')}
             className={`px-3 py-1.5 rounded-md transition-colors ${
@@ -91,6 +101,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             }`}
           >
             Overview
+          </button>
+          <button
+            onClick={() => setActiveTab('payouts')}
+            className={`px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5 ${
+              activeTab === 'payouts' ? 'bg-amber-500 text-slate-950 font-black' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Banknote className="w-3.5 h-3.5" />
+            <span>Driver Payouts</span>
+            {totalPendingPayouts > 0 && (
+              <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold ${
+                activeTab === 'payouts' ? 'bg-slate-950 text-amber-400' : 'bg-amber-500/20 text-amber-300'
+              }`}>
+                ₹{totalPendingPayouts.toLocaleString('en-IN')}
+              </span>
+            )}
           </button>
           <button
             onClick={() => setActiveTab('providers')}
@@ -146,7 +172,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 {activeTripsCount}
               </div>
               <div className="text-[11px] text-slate-500 mt-1">
-                Across Railways, Flights, Cabs & Buses
+                Across Cars, Auto Rickshaws & Bikes
               </div>
             </div>
 
@@ -177,18 +203,50 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
 
+          {/* Driver Payouts Quick Card Row in Overview */}
+          <div className="p-5 bg-amber-50/70 dark:bg-amber-950/20 rounded-xl border border-amber-300 dark:border-amber-800/80 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <div className="p-3 bg-amber-500 text-slate-950 rounded-xl shadow-xs">
+                <Banknote className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                    Driver Payouts &amp; Captain Balances
+                  </h3>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-200">
+                    Live Telemetry
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600 dark:text-slate-300 mt-1">
+                  <span>Total Driver Net Earnings: <strong className="font-mono text-emerald-600 dark:text-emerald-400">₹{totalDriverEarnings.toLocaleString('en-IN')}</strong></span>
+                  <span>·</span>
+                  <span>Pending Owed: <strong className="font-mono text-amber-700 dark:text-amber-300">₹{totalPendingPayouts.toLocaleString('en-IN')}</strong> ({pendingDriversCount} captains)</span>
+                  <span>·</span>
+                  <span>Settled: <strong className="font-mono text-slate-700 dark:text-slate-300">₹{totalSettledPayouts.toLocaleString('en-IN')}</strong></span>
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('payouts')}
+              className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 dark:bg-amber-500 dark:hover:bg-amber-400 text-white dark:text-slate-950 text-xs font-black rounded-xl transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+            >
+              <span>Manage Driver Payouts</span>
+              <span>➔</span>
+            </button>
+          </div>
+
           {/* Category Breakdown Strip */}
           <div className="p-5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
             <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 dark:text-white mb-3">
               Bookings by Category
             </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 text-center">
+            <div className="grid grid-cols-3 gap-3 text-center">
               {[
-                { label: 'Trains', count: bookings.filter((b) => b.category === 'trains').length },
-                { label: 'Flights', count: bookings.filter((b) => b.category === 'flights').length },
-                { label: 'Buses', count: bookings.filter((b) => b.category === 'buses').length },
                 { label: 'Cars', count: bookings.filter((b) => b.category === 'cars').length },
-                { label: 'Autos', count: bookings.filter((b) => b.category === 'autos').length },
+                { label: 'Auto Rickshaws', count: bookings.filter((b) => b.category === 'autos').length },
                 { label: 'Bikes', count: bookings.filter((b) => b.category === 'bikes').length },
               ].map((c) => (
                 <div key={c.label} className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-lg border border-slate-200 dark:border-slate-700">
@@ -201,6 +259,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* DRIVER PAYOUTS TAB */}
+      {activeTab === 'payouts' && (
+        <DriverPayoutsSection
+          bookings={bookings}
+          onRefreshData={onRefreshData}
+        />
       )}
 
       {/* PROVIDERS TAB */}

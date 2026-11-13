@@ -1,5 +1,5 @@
 import React from 'react';
-import { Compass, ArrowRight, ShieldCheck, Star } from 'lucide-react';
+import { Compass, ArrowRight, Star } from 'lucide-react';
 import { TransportCategory } from '../types/travel';
 
 interface ExploreViewProps {
@@ -18,64 +18,64 @@ export const ExploreView: React.FC<ExploreViewProps> = ({ onSelectRoute }) => {
     rating: number;
   }[] = [
     {
-      category: 'trains',
-      title: 'Vande Bharat Scenic Southern Express',
-      from: 'Chennai Central (MAS)',
-      to: 'KSR Bengaluru (SBC)',
-      type: 'Semi-High Speed Rail',
-      duration: '4h 30m',
-      price: 995,
-      rating: 4.8,
-    },
-    {
-      category: 'flights',
-      title: 'Delhi to Mumbai Executive Air Corridor',
-      from: 'New Delhi (DEL)',
-      to: 'Mumbai (BOM)',
-      type: 'Airbus A321neo Non-stop',
-      duration: '2h 15m',
-      price: 4420,
-      rating: 4.7,
-    },
-    {
-      category: 'buses',
-      title: 'Royal Rajasthan Volvo Sleeper',
-      from: 'Delhi Kashmere Gate',
-      to: 'Jaipur Sindhi Camp',
-      type: 'Volvo 9600 AC Sleeper',
-      duration: '5h 45m',
-      price: 850,
-      rating: 4.7,
-    },
-    {
       category: 'cars',
       title: 'Airport Express Chauffeur Transfer',
       from: 'Connaught Place',
-      to: 'Indira Gandhi Intl (DEL)',
+      to: 'Aerocity / IGI Pickup Bay',
       type: 'Prime Sedan Chauffeur',
       duration: '35 mins',
       price: 499,
       rating: 4.9,
     },
     {
+      category: 'autos',
+      title: 'Metro Smart EV Rickshaw Transfer',
+      from: 'Connaught Place',
+      to: 'Sector 18 Metro Hub',
+      type: 'Mahindra Treo Electric Auto',
+      duration: '15 mins',
+      price: 110,
+      rating: 4.8,
+    },
+    {
+      category: 'bikes',
+      title: 'Express City Bike Taxi',
+      from: 'Koramangala 4th Block',
+      to: 'Indiranagar 100ft Road',
+      type: 'Fast Moto Commuter',
+      duration: '14 mins',
+      price: 65,
+      rating: 4.9,
+    },
+    {
+      category: 'cars',
+      title: 'Corporate Tech Park Sedan Ride',
+      from: 'Koramangala 4th Block',
+      to: 'ITPL Tech Park / Whitefield',
+      type: 'AC Executive Sedan',
+      duration: '40 mins',
+      price: 420,
+      rating: 4.8,
+    },
+    {
+      category: 'autos',
+      title: 'Market & Business District Auto',
+      from: 'T. Nagar Hub',
+      to: 'Anna Salai Central',
+      type: 'Verified Meter Auto Rickshaw',
+      duration: '18 mins',
+      price: 95,
+      rating: 4.7,
+    },
+    {
       category: 'bikes',
       title: 'Heritage Highway Cruiser Rental',
-      from: 'Connaught Place Hub',
-      to: 'City Center / Outstation',
+      from: 'Panaji City Promenade',
+      to: 'Coastal Highway Circuit',
       type: 'Royal Enfield Hunter 350',
       duration: '24 Hours Rental',
       price: 1199,
       rating: 4.9,
-    },
-    {
-      category: 'autos',
-      title: 'Metro Smart EV Rickshaw Transfer',
-      from: 'Connaught Place',
-      to: 'New Delhi Railway (NDLS)',
-      type: 'Mahindra Treo Electric',
-      duration: '12 mins',
-      price: 110,
-      rating: 4.8,
     },
   ];
 
@@ -84,10 +84,10 @@ export const ExploreView: React.FC<ExploreViewProps> = ({ onSelectRoute }) => {
       {/* Editorial Headline */}
       <div>
         <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-          Explore Popular Travel Corridors & Fleet Networks
+          Explore Popular City Corridors & Mobility Fleet
         </h1>
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-          Hand-curated travel experiences verified with authorized railways, airlines, fleet operators, and bus partners.
+          Curated local routes across Cars, Auto Rickshaws, and Bikes synced directly with Firebase Realtime Database.
         </p>
       </div>
 
@@ -95,7 +95,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({ onSelectRoute }) => {
       <div className="relative rounded-2xl overflow-hidden shadow-xl border border-slate-200 dark:border-slate-800 bg-slate-900 text-white min-h-[300px] flex items-end p-6 sm:p-8">
         <img
           src="/src/assets/images/travel_destination_scenic_1794029177047.jpg"
-          alt="Scenic Mountain Viaduct Journey"
+          alt="Scenic Highway Drive"
           className="absolute inset-0 w-full h-full object-cover"
           referrerPolicy="no-referrer"
         />
@@ -104,19 +104,19 @@ export const ExploreView: React.FC<ExploreViewProps> = ({ onSelectRoute }) => {
         <div className="relative z-10 max-w-xl">
           <div className="flex items-center gap-2 text-xs font-bold text-sky-400 mb-2">
             <Compass className="w-4 h-4 text-sky-400" />
-            <span>Signature Mountain & Express Journeys</span>
+            <span>City & Highway Mobility Journeys</span>
           </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-            Discover India by Scenic Rail & Horizon Flights
+            Cars, Auto Rickshaws & Bikes On Demand
           </h2>
           <p className="text-xs sm:text-sm text-slate-300 mt-1.5 leading-relaxed">
-            Experience world-class Vande Bharat panoramic trains, luxury sleeper buses, and direct flight connections with live confirmed seats.
+            Book verified private cabs, quick meter auto rickshaws, or nimble bike taxis with live Firebase RTDB dispatch and OTP security.
           </p>
           <button
-            onClick={() => onSelectRoute('trains', 'Chennai Central (MAS)', 'KSR Bengaluru (SBC)')}
+            onClick={() => onSelectRoute('cars', 'Connaught Place', 'Aerocity / IGI Pickup Bay')}
             className="mt-4 px-4 py-2 bg-white text-slate-950 font-bold rounded-lg text-xs hover:bg-slate-100 transition-colors flex items-center gap-1.5 shadow-md"
           >
-            <span>Book Vande Bharat Express</span>
+            <span>Find Live Cars</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -134,21 +134,21 @@ export const ExploreView: React.FC<ExploreViewProps> = ({ onSelectRoute }) => {
         </div>
         <div>
           <span className="text-xs font-bold text-sky-600 dark:text-sky-400 uppercase tracking-wider">
-            6 Unified Transportation Categories
+            3 Unified Mobility Categories
           </span>
           <h3 className="text-xl font-extrabold text-slate-900 dark:text-white mt-1">
-            One Single Super App for Every Mobility Need
+            Cars, Auto Rickshaws & Bikes in One App
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
-            Whether you need a quick 2-minute auto rickshaw to the metro, an executive chauffeur cab for client meetings, an intercity sleeper coach, an IRCTC verified railway berth, or a domestic flight, Ticket Life brings genuine inventory, verified fares, and instant tickets together.
+            Whether you need a quick 2-minute auto rickshaw to the metro, a bike taxi to beat rush-hour traffic, or a comfortable private car ride, Ticket Life connects you directly to live rides in Firebase.
           </p>
         </div>
       </div>
 
-      {/* Popular Corridors Table */}
+      {/* Popular Corridors Grid */}
       <div>
         <h2 className="text-base font-extrabold text-slate-900 dark:text-white mb-3">
-          Trending Travel Corridors
+          Popular Ride Corridors
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {FEATURED_ROUTES.map((route, i) => (
@@ -158,7 +158,9 @@ export const ExploreView: React.FC<ExploreViewProps> = ({ onSelectRoute }) => {
             >
               <div>
                 <div className="flex items-center justify-between text-xs text-slate-400 pb-2 border-b border-slate-100 dark:border-slate-800">
-                  <span className="uppercase font-bold text-sky-600">{route.category}</span>
+                  <span className="uppercase font-bold text-sky-600">
+                    {route.category === 'autos' ? 'AUTO RICKSHAW' : route.category.toUpperCase()}
+                  </span>
                   <div className="flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-300">
                     <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
                     <span>{route.rating}</span>
@@ -178,7 +180,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({ onSelectRoute }) => {
 
               <div className="pt-3 mt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
                 <div>
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold">From</span>
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold">Est. Fare</span>
                   <div className="text-base font-extrabold text-slate-900 dark:text-white font-mono tabular-nums">
                     ₹{route.price.toLocaleString('en-IN')}
                   </div>

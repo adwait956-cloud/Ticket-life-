@@ -24,16 +24,12 @@ export const CancellationModal: React.FC<CancellationModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  const isPayAfterRide = booking.paymentStatus === 'pay_after_ride';
   const total = booking.fareBreakdown.totalAmount;
-  let deductionPercent = 10;
-  if (booking.category === 'cars' || booking.category === 'autos' || booking.category === 'bikes') {
-    deductionPercent = 0; // 100% free
-  } else if (booking.category === 'flights') {
-    deductionPercent = 20;
-  }
+  const deductionPercent = 0; // 100% free cancellation on Cars, Auto Rickshaws & Bikes
 
-  const deductionAmount = Math.round((total * deductionPercent) / 100);
-  const refundAmount = total - deductionAmount;
+  const deductionAmount = 0;
+  const refundAmount = isPayAfterRide ? 0 : total - deductionAmount;
 
   const handleConfirmCancel = () => {
     setIsSubmitting(true);
@@ -80,11 +76,13 @@ export const CancellationModal: React.FC<CancellationModalProps> = ({
           {/* Refund Calculation Table */}
           <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 text-xs space-y-2">
             <div className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">
-              Authorized Refund Estimation
+              {isPayAfterRide ? 'Pay After Ride Cancellation' : 'Authorized Refund Estimation'}
             </div>
             <div className="flex justify-between">
-              <span>Total Fare Paid:</span>
-              <span className="font-mono font-bold">₹{total.toLocaleString('en-IN')}</span>
+              <span>{isPayAfterRide ? 'Upfront Paid:' : 'Total Fare Paid:'}</span>
+              <span className="font-mono font-bold">
+                ₹{(isPayAfterRide ? 0 : total).toLocaleString('en-IN')}
+              </span>
             </div>
             <div className="flex justify-between text-rose-600">
               <span>Provider Cancellation Fee ({deductionPercent}%):</span>
@@ -95,7 +93,9 @@ export const CancellationModal: React.FC<CancellationModalProps> = ({
               <span className="font-mono">₹{refundAmount.toLocaleString('en-IN')}</span>
             </div>
             <div className="text-[11px] text-slate-500 pt-1">
-              Refund will be credited back to your original {booking.paymentMethod} account or instant Ticket Life wallet within 2-4 hours.
+              {isPayAfterRide
+                ? 'Since this ride was set to Pay Driver After Ride, ₹0 was charged upfront and ₹0 cancellation fee applies.'
+                : `Refund will be credited back to your original ${booking.paymentMethod} account or instant Ticket Life wallet within 2-4 hours.`}
             </div>
           </div>
 

@@ -85,7 +85,9 @@ export const CalendarSync: React.FC<CalendarSyncProps> = ({
       }
 
       if (!token) {
-        throw new Error('Google Calendar authorization required. Please sign in with Google.');
+        setErrorMsg('Google Calendar authorization was cancelled. Please complete Google Sign-In to sync.');
+        setIsSyncing(false);
+        return;
       }
 
       const result = await createBookingCalendarEvent(bookingToConfirmSync, token);
@@ -128,7 +130,9 @@ export const CalendarSync: React.FC<CalendarSyncProps> = ({
       }
 
       if (!token) {
-        throw new Error('Google Calendar authorization required. Please sign in with Google.');
+        setErrorMsg('Google Calendar authorization was cancelled. Please complete Google Sign-In to sync.');
+        setIsSyncing(false);
+        return;
       }
 
       const pending = syncableBookings.filter((b) => !b.googleCalendarEventId);

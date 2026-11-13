@@ -33,7 +33,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ user }) => {
 
     createSupportTicket({
       userId: user?.id || 'guest',
-      userEmail: user?.email || 'adwait956@gmail.com',
+      userEmail: user?.email || 'support@ticketlife.app',
       category: ticketCategory,
       bookingRef: bookingRefInput.trim() || undefined,
       subject: ticketSubject.trim(),
@@ -74,7 +74,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ user }) => {
             <Mail className="w-4 h-4" />
           </div>
           <div className="font-bold text-slate-900 dark:text-white">Official Support Email</div>
-          <div className="text-slate-500 mt-0.5 font-medium">adwait956@gmail.com</div>
+          <div className="text-slate-500 mt-0.5 font-medium">support@ticketlife.app</div>
           <div className="text-sky-600 font-semibold mt-1">Direct Helpdesk Response</div>
         </div>
 
@@ -157,7 +157,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ user }) => {
                   className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-semibold text-slate-900 dark:text-white focus:outline-none"
                 >
                   <option value="Cancellation & Refund">Cancellation & Refund</option>
-                  <option value="PNR & Boarding Pass">PNR & Boarding Pass Verification</option>
+                  <option value="Ride Pass & OTP Verification">Ride Pass & OTP Verification</option>
                   <option value="Payment & Transaction">Payment & Gateway Status</option>
                   <option value="Driver / Vehicle Dispatch">Driver / Vehicle Dispatch</option>
                   <option value="Baggage & Amenities">Baggage & Amenities</option>
@@ -166,11 +166,11 @@ export const SupportView: React.FC<SupportViewProps> = ({ user }) => {
 
               <div>
                 <label className="block text-slate-600 dark:text-slate-400 font-semibold mb-1">
-                  Booking Reference / PNR (Optional)
+                  Booking Reference / Ride ID (Optional)
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. TL-RAIL-90218"
+                  placeholder="e.g. TL-CAR-90218"
                   value={bookingRefInput}
                   onChange={(e) => setBookingRefInput(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-semibold text-slate-900 dark:text-white focus:outline-none"

@@ -29,12 +29,12 @@ interface SetPriceAlertModalProps {
 }
 
 export const SetPriceAlertModal: React.FC<SetPriceAlertModalProps> = ({
-  initialOrigin = 'Chennai Central',
-  initialOriginCode = 'MAS',
-  initialDestination = 'KSR Bengaluru',
-  initialDestCode = 'SBC',
-  initialCategory = 'trains',
-  initialCurrentPrice = 2850,
+  initialOrigin = 'Connaught Place',
+  initialOriginCode = 'CP',
+  initialDestination = 'Aerocity',
+  initialDestCode = 'AERO',
+  initialCategory = 'cars',
+  initialCurrentPrice = 450,
   catalogOptions,
   currentUser,
   onClose,
@@ -173,19 +173,23 @@ export const SetPriceAlertModal: React.FC<SetPriceAlertModalProps> = ({
             <label className="block text-stone-700 dark:text-stone-300 font-bold mb-1.5 uppercase text-[10px] tracking-wider">
               Travel Mode Category
             </label>
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
-              {(['trains', 'flights', 'buses', 'cars', 'autos', 'bikes'] as TransportCategory[]).map((cat) => (
+            <div className="grid grid-cols-3 gap-1.5">
+              {([
+                { id: 'cars', label: 'Cars' },
+                { id: 'autos', label: 'Auto Rickshaws' },
+                { id: 'bikes', label: 'Bikes' },
+              ] as { id: TransportCategory; label: string }[]).map((cat) => (
                 <button
-                  key={cat}
+                  key={cat.id}
                   type="button"
-                  onClick={() => setCategory(cat)}
-                  className={`py-2 px-1 text-center font-bold rounded-xl border text-[11px] capitalize transition-colors ${
-                    category === cat
+                  onClick={() => setCategory(cat.id)}
+                  className={`py-2 px-2 text-center font-bold rounded-xl border text-[11px] transition-colors ${
+                    category === cat.id
                       ? 'bg-amber-500 text-stone-950 border-amber-500 shadow-xs'
                       : 'border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-50 dark:hover:bg-stone-800'
                   }`}
                 >
-                  {cat}
+                  {cat.label}
                 </button>
               ))}
             </div>

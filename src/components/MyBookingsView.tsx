@@ -79,8 +79,8 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
     if (activeSubTab === 'completed') {
       return b.bookingStatus === 'completed';
     }
-    // upcoming
-    return b.bookingStatus === 'confirmed';
+    // upcoming (confirmed or live in_progress)
+    return b.bookingStatus === 'confirmed' || b.bookingStatus === 'in_progress';
   }).filter((b) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
@@ -209,7 +209,7 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
             No {activeSubTab} bookings found
           </h3>
           <p className="text-xs text-slate-500 mt-1">
-            Book any train, flight, bus, cab, auto, or bike to view tickets here.
+            Book any car, auto rickshaw, or bike ride to view passes here.
           </p>
         </div>
       ) : (
@@ -241,14 +241,21 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2">
+                  {booking.driverInfo?.otp && booking.bookingStatus === 'confirmed' && (
+                    <span className="px-2 py-0.5 text-[11px] font-mono font-black rounded bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                      START OTP: {booking.driverInfo.otp}
+                    </span>
+                  )}
                   <span
                     className={`px-2.5 py-0.5 text-xs font-bold uppercase rounded ${
                       booking.bookingStatus === 'cancelled'
                         ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-400'
+                        : booking.bookingStatus === 'in_progress'
+                        ? 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300'
                         : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-400'
                     }`}
                   >
-                    {booking.bookingStatus}
+                    {booking.bookingStatus === 'in_progress' ? 'LIVE IN PROGRESS' : booking.bookingStatus}
                   </span>
                 </div>
               </div>
@@ -288,7 +295,7 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
 
                 <div className="sm:col-span-4 sm:border-l sm:border-slate-100 sm:dark:border-slate-800 sm:pl-4 flex flex-col justify-center sm:items-end">
                   <div className="text-[11px] text-slate-500 uppercase font-semibold">
-                    {booking.category === 'trains' || booking.category === 'flights' ? 'Authorized PNR' : 'Ride Confirmation'}
+                    Ride Confirmation
                   </div>
                   <div className="text-sm font-extrabold text-sky-600 dark:text-sky-400 font-mono">
                     {booking.pnrNumber || booking.providerRef}
@@ -297,7 +304,9 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
                     Seat(s): <span className="font-bold text-slate-800 dark:text-slate-200">{booking.seatNumbers.join(', ')}</span>
                   </div>
                   <div className="text-xs text-slate-500 font-bold font-mono mt-0.5">
-                    Paid: ₹{booking.fareBreakdown.totalAmount.toLocaleString('en-IN')}
+                    {booking.paymentStatus === 'pay_after_ride'
+                      ? `Pay Driver After Ride: ₹${booking.fareBreakdown.totalAmount.toLocaleString('en-IN')}`
+                      : `Paid: ₹${booking.fareBreakdown.totalAmount.toLocaleString('en-IN')}`}
                   </div>
                 </div>
               </div>
@@ -325,10 +334,16 @@ export const MyBookingsView: React.FC<MyBookingsViewProps> = ({
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => onOpenLiveTracker(booking)}
-                    className="px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors flex items-center gap-1"
+                    className="px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
                   >
-                    <Radio className="w-3 h-3 text-sky-500" />
-                    <span>Live Radar</span>
+                    <Radio className="w-3 h-3" />
+                    <span>
+                      {booking.bookingStatus === 'confirmed'
+                        ? 'Enter OTP & Start Map'
+                        : booking.bookingStatus === 'in_progress'
+                        ? 'Live Map & End Ride'
+                        : 'View Route Map'}
+                    </span>
                   </button>
 
                   {booking.bookingStatus !== 'cancelled' && (

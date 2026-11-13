@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { BookingRecord, UserAccount, WalletTransaction } from '../types/travel';
 import { addWalletFunds, getStoredWalletTransactions } from '../services/api';
+import { processRealGatewayPayment } from '../services/paymentService';
 
 interface WalletPaymentHistoryViewProps {
   user: UserAccount | null;
@@ -44,10 +45,11 @@ export const WalletPaymentHistoryView: React.FC<WalletPaymentHistoryViewProps> =
   const [selectedPayMethod, setSelectedPayMethod] = useState<'UPI' | 'Card' | 'NetBanking'>('UPI');
   const [isProcessingTopup, setIsProcessingTopup] = useState(false);
   const [topupSuccessMsg, setTopupSuccessMsg] = useState('');
+  const [topupErrorMsg, setTopupErrorMsg] = useState('');
 
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'refunded'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'pay_after_ride' | 'refunded'>('all');
 
   // Selected receipt for modal
   const [selectedReceiptBooking, setSelectedReceiptBooking] = useState<BookingRecord | null>(null);
@@ -59,24 +61,52 @@ export const WalletPaymentHistoryView: React.FC<WalletPaymentHistoryViewProps> =
     setCustomAmountInput('');
   };
 
-  const handleExecuteAddMoney = () => {
+  const handleExecuteAddMoney = async () => {
     const finalAmt = customAmountInput ? parseInt(customAmountInput, 10) : addAmount;
-    if (!finalAmt || isNaN(finalAmt) || finalAmt < 50) return;
+    if (!finalAmt || isNaN(finalAmt) || finalAmt < 50) {
+      setTopupErrorMsg('Minimum wallet top-up is ₹50.');
+      return;
+    }
 
+    setTopupErrorMsg('');
     setIsProcessingTopup(true);
-    setTimeout(() => {
-      const txn = addWalletFunds(finalAmt, selectedPayMethod);
+    try {
+      const pgRes = await processRealGatewayPayment({
+        amount: finalAmt,
+        customerName: user?.fullName || 'Ticket Life User',
+        customerEmail: user?.email || 'passenger@ticketlife.app',
+        customerPhone: user?.phone || '9999999999',
+        bookingRef: `WALLET-TOPUP-${Date.now()}`,
+        gatewayPreference: 'auto',
+        pendingContext: {
+          type: 'wallet_topup',
+          amount: finalAmt,
+          method: selectedPayMethod,
+        },
+      });
+
+      if (pgRes.redirected) return;
+      if (!pgRes.paid) {
+        setTopupErrorMsg('Payment was not confirmed by the gateway.');
+        setIsProcessingTopup(false);
+        return;
+      }
+
+      const txn = addWalletFunds(finalAmt, `${selectedPayMethod} (${pgRes.txnId})`);
       const updatedTxns = getStoredWalletTransactions();
       setTransactions(updatedTxns);
       if (onRefreshUser) onRefreshUser();
       if (onTopUpSuccess) onTopUpSuccess(finalAmt, txn.balanceAfter);
       setIsProcessingTopup(false);
-      setTopupSuccessMsg(`₹${finalAmt.toLocaleString('en-IN')} added successfully to your Ticket Life Wallet!`);
+      setTopupSuccessMsg(`₹${finalAmt.toLocaleString('en-IN')} verified & added to your Ticket Life Wallet!`);
       setTimeout(() => {
         setTopupSuccessMsg('');
         setIsAddMoneyOpen(false);
       }, 1600);
-    }, 900);
+    } catch (err: any) {
+      setTopupErrorMsg(err?.message || 'Unable to verify real payment for wallet top-up.');
+      setIsProcessingTopup(false);
+    }
   };
 
   // Filter bookings for payment history
@@ -214,7 +244,7 @@ export const WalletPaymentHistoryView: React.FC<WalletPaymentHistoryViewProps> =
               Instant Refund Guarantee
             </h4>
             <p className="text-xs text-stone-500 dark:text-stone-400 mt-1 leading-relaxed">
-              Cancelled railway berths, flight reschedulings, and cab cancellations credit back directly to your wallet within 60 seconds with 0% bank settlement wait.
+              Cancelled car, auto rickshaw, and bike bookings credit back directly to your wallet within 60 seconds with 0% bank settlement wait.
             </p>
           </div>
 
@@ -367,6 +397,7 @@ export const WalletPaymentHistoryView: React.FC<WalletPaymentHistoryViewProps> =
               >
                 <option value="all">All Statuses</option>
                 <option value="paid">Paid Only</option>
+                <option value="pay_after_ride">Pay Driver After Ride</option>
                 <option value="refunded">Refunded</option>
               </select>
             </div>
@@ -425,10 +456,12 @@ export const WalletPaymentHistoryView: React.FC<WalletPaymentHistoryViewProps> =
                           className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                             b.paymentStatus === 'paid'
                               ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400'
+                              : b.paymentStatus === 'pay_after_ride'
+                              ? 'bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-400'
                               : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400'
                           }`}
                         >
-                          {b.paymentStatus}
+                          {b.paymentStatus === 'pay_after_ride' ? 'Pay After Ride' : b.paymentStatus}
                         </span>
                       </td>
                       <td className="px-4 py-3.5 text-right font-mono font-black text-sm text-stone-900 dark:text-white">
@@ -478,6 +511,12 @@ export const WalletPaymentHistoryView: React.FC<WalletPaymentHistoryViewProps> =
                 <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 font-bold flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                   <span>{topupSuccessMsg}</span>
+                </div>
+              )}
+
+              {topupErrorMsg && (
+                <div className="p-3 bg-rose-50 dark:bg-rose-950/40 rounded-xl border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 font-semibold leading-relaxed">
+                  {topupErrorMsg}
                 </div>
               )}
 
@@ -601,15 +640,17 @@ export const WalletPaymentHistoryView: React.FC<WalletPaymentHistoryViewProps> =
               <div className="flex justify-between items-start pb-3 border-b border-stone-100 dark:border-stone-800">
                 <div>
                   <div className="font-extrabold text-sm text-stone-900 dark:text-white">
-                    Ticket Life Technologies Private Limited
+                    Ticket Life Verified Receipt
                   </div>
                   <div className="text-[11px] text-stone-400 mt-0.5">
-                    GSTIN: 07AAACT2941E1ZX · HSN/SAC: 996411
+                    HSN/SAC: 996411 · Merchant PAN/GST issued on seller KYC
                   </div>
                 </div>
                 <div className="text-right">
                   <span className="px-2 py-0.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 font-extrabold uppercase text-[10px] rounded">
-                    PAID & SETTLED
+                    {selectedReceiptBooking.paymentStatus === 'pay_after_ride'
+                      ? 'DUE TO DRIVER AT DROP'
+                      : 'PAID & SETTLED'}
                   </span>
                   <div className="text-[11px] text-stone-400 mt-1 font-mono">
                     {new Date(selectedReceiptBooking.createdAt).toLocaleDateString('en-IN')}

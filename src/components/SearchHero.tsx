@@ -9,8 +9,9 @@ import {
   Clock,
   Sparkles,
 } from 'lucide-react';
-import { LocationItem, SearchFilterState, TransportCategory } from '../types/travel';
-import { LOCATIONS_LIST } from '../data/mockData';
+import { SearchFilterState, TransportCategory } from '../types/travel';
+import { IndiaPlaceInput } from './IndiaPlaceInput';
+import { WeatherWidget } from './WeatherWidget';
 
 interface SearchHeroProps {
   filters: SearchFilterState;
@@ -23,72 +24,35 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
   onUpdateFilters,
   onExecuteSearch,
 }) => {
-  const [showOriginSuggest, setShowOriginSuggest] = useState(false);
-  const [showDestSuggest, setShowDestSuggest] = useState(false);
-
-  // Filter locations relevant to current category
-  const filteredLocations = LOCATIONS_LIST.filter((loc) => {
-    if (filters.category === 'flights') return loc.type === 'airport';
-    if (filters.category === 'trains') return loc.type === 'railway';
-    if (filters.category === 'buses') return loc.type === 'bus_station' || loc.type === 'airport';
-    return true; // cars, autos, bikes can use any location
-  });
-
   const handleSwapLocations = () => {
     onUpdateFilters({
       origin: filters.destination,
       originCode: filters.destCode,
+      originCoords: filters.destCoords,
       destination: filters.origin,
       destCode: filters.originCode,
+      destCoords: filters.originCoords,
     });
-  };
-
-  const selectOrigin = (loc: LocationItem) => {
-    onUpdateFilters({ origin: loc.name, originCode: loc.code });
-    setShowOriginSuggest(false);
-  };
-
-  const selectDest = (loc: LocationItem) => {
-    onUpdateFilters({ destination: loc.name, destCode: loc.code });
-    setShowDestSuggest(false);
   };
 
   const getCategoryHeading = () => {
     switch (filters.category) {
-      case 'trains':
-        return {
-          title: 'Authorized Railway Ticket Booking',
-          subtitle: 'Search Vande Bharat, Shatabdi, Rajdhani & Superfast Express trains with genuine PNR status.',
-          badge: 'IRCTC Authorized Gateway',
-        };
-      case 'flights':
-        return {
-          title: 'Domestic & International Airline Flights',
-          subtitle: 'Compare live fares across IndiGo, Air India, Emirates, Vistara with zero hidden surcharges.',
-          badge: 'Global GDS Flight Engine',
-        };
-      case 'buses':
-        return {
-          title: 'Intercity Volvo & Sleeper Buses',
-          subtitle: 'Book sanitized AC luxury multi-axle sleeper and seater coaches with live GPS route tracking.',
-          badge: 'RedBus Verified Network',
-        };
       case 'cars':
         return {
-          title: 'Taxi & Private Chauffeur Rides',
-          subtitle: 'Instant city pickups, outstation trips & airport transfers with background-verified chauffeurs.',
+          title: 'Cars & Private Chauffeur Rides',
+          subtitle: 'Live verified cars, cabs, and chauffeur pickups directly from your Firebase Realtime Database.',
           badge: 'Ticket Life Mobility Fleet',
         };
       case 'autos':
         return {
           title: 'Local Auto Rickshaw Booking',
-          subtitle: 'Transparent government-approved meter fares and eco-friendly electric rickshaws with ride OTP.',
+          subtitle: 'Transparent meter fares and eco-friendly electric auto rickshaws with instant ride OTP.',
           badge: 'City Meter Dispatch',
         };
       case 'bikes':
         return {
           title: 'Fast Bike Taxi & Cruiser Rentals',
-          subtitle: 'Beat city traffic on quick moto taxi rides or rent a self-drive cruiser for weekend road trips.',
+          subtitle: 'Beat city traffic on quick bike taxi rides or book a verified commuter two-wheeler.',
           badge: 'Insured Commuter Fleet',
         };
     }
@@ -103,10 +67,7 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
   const fareCalendarData = React.useMemo(() => {
     // Base fare estimation by category
     const categoryBaseRates: Record<TransportCategory, number> = {
-      flights: 4200,
-      trains: 1150,
-      buses: 780,
-      cars: 2200,
+      cars: 450,
       autos: 160,
       bikes: 85,
     };
@@ -153,7 +114,7 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
       multiplier += variance;
 
       // Calculate final fare rounded to neat step
-      const step = filters.category === 'flights' ? 100 : filters.category === 'trains' || filters.category === 'buses' || filters.category === 'cars' ? 50 : 10;
+      const step = filters.category === 'cars' ? 50 : 10;
       const fare = Math.max(step, Math.round((baseRate * multiplier) / step) * step);
 
       days.push({
@@ -201,7 +162,7 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
 
       <div className="relative z-10 p-6 sm:p-8 lg:p-10 max-w-6xl mx-auto">
         {/* Editorial Title Section */}
-        <div className="max-w-2xl mb-8">
+        <div className="max-w-3xl mb-6">
           <div className="flex items-center gap-2 text-xs font-bold text-amber-400 mb-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
             <span>{info.badge}</span>
@@ -216,39 +177,21 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
           </p>
         </div>
 
+        {/* Live Weather Widget */}
+        <WeatherWidget
+          origin={filters.origin}
+          originCoords={filters.originCoords}
+          destination={filters.destination}
+          destCoords={filters.destCoords}
+        />
+
         {/* Search Matrix */}
         <div className="bg-white dark:bg-stone-900/90 rounded-2xl p-4 sm:p-6 text-stone-900 dark:text-white shadow-2xl border border-stone-200 dark:border-stone-800 backdrop-blur-md">
-          {/* Trip type selector if flight or train */}
           <div className="flex flex-wrap items-center justify-between gap-4 mb-4 pb-3 border-b border-stone-100 dark:border-stone-800 text-xs font-semibold">
-            {(filters.category === 'flights' || filters.category === 'trains') ? (
-              <div className="flex items-center gap-4">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="tripType"
-                    checked={!filters.isRoundTrip}
-                    onChange={() => onUpdateFilters({ isRoundTrip: false })}
-                    className="accent-amber-600"
-                  />
-                  <span>One-Way Journey</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="tripType"
-                    checked={filters.isRoundTrip}
-                    onChange={() => onUpdateFilters({ isRoundTrip: true })}
-                    className="accent-amber-600"
-                  />
-                  <span>Round-Trip</span>
-                </label>
-              </div>
-            ) : (
-              <div className="text-xs text-stone-500 dark:text-stone-400 flex items-center gap-2">
-                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                <span>Instant Route Pricing & Verified Dispatch</span>
-              </div>
-            )}
+            <div className="text-xs text-stone-500 dark:text-stone-400 flex items-center gap-2">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>Instant Route Pricing & Verified Dispatch (Cars · Auto Rickshaws · Bikes)</span>
+            </div>
 
             {/* Smart Fare Calendar Toggle Button */}
             <button
@@ -272,50 +215,24 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
             {/* Origin */}
             <div className="relative md:col-span-4">
               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
-                From / Pickup
+                From / Pickup (Nashik &amp; All India)
               </label>
-              <div className="relative">
-                <MapPin className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-                <input
-                  type="text"
-                  value={filters.origin}
-                  onFocus={() => setShowOriginSuggest(true)}
-                  onChange={(e) => onUpdateFilters({ origin: e.target.value })}
-                  placeholder="Enter city, station, or airport..."
-                  className="w-full pl-9 pr-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
-                />
-              </div>
-
-              {/* Suggestions dropdown */}
-              {showOriginSuggest && (
-                <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl z-50 max-h-56 overflow-y-auto">
-                  <div className="p-2 text-[11px] font-bold text-slate-400 uppercase">
-                    Select Departure Point
-                  </div>
-                  {filteredLocations.slice(0, 7).map((loc) => (
-                    <button
-                      key={loc.id}
-                      type="button"
-                      onClick={() => selectOrigin(loc)}
-                      className="w-full text-left px-3 py-2 text-xs hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-between group"
-                    >
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">
-                        {loc.name}
-                      </span>
-                      <span className="text-slate-500 group-hover:text-sky-600 font-mono">
-                        {loc.code}
-                      </span>
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => setShowOriginSuggest(false)}
-                    className="w-full text-center py-1 text-[11px] text-slate-400 hover:text-slate-600 border-t border-slate-100 dark:border-slate-700"
-                  >
-                    Close
-                  </button>
-                </div>
-              )}
+              <IndiaPlaceInput
+                value={filters.origin}
+                onChangeText={(text) =>
+                  onUpdateFilters({ origin: text, originCoords: undefined })
+                }
+                onSelectPlace={(place) =>
+                  onUpdateFilters({
+                    origin: place.name,
+                    originCode: place.shortCode,
+                    originCoords: { lat: place.lat, lng: place.lng },
+                  })
+                }
+                biasMode="nashik"
+                placeholder="Pickup in Nashik or any Indian city..."
+                iconColorClassName="text-emerald-500"
+              />
             </div>
 
             {/* Swap Button */}
@@ -335,48 +252,22 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
                 To / Destination
               </label>
-              <div className="relative">
-                <MapPin className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-                <input
-                  type="text"
-                  value={filters.destination}
-                  onFocus={() => setShowDestSuggest(true)}
-                  onChange={(e) => onUpdateFilters({ destination: e.target.value })}
-                  placeholder="Enter destination..."
-                  className="w-full pl-9 pr-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
-                />
-              </div>
-
-              {/* Suggestions dropdown */}
-              {showDestSuggest && (
-                <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl z-50 max-h-56 overflow-y-auto">
-                  <div className="p-2 text-[11px] font-bold text-slate-400 uppercase">
-                    Select Destination
-                  </div>
-                  {filteredLocations.slice(0, 7).map((loc) => (
-                    <button
-                      key={loc.id}
-                      type="button"
-                      onClick={() => selectDest(loc)}
-                      className="w-full text-left px-3 py-2 text-xs hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-between group"
-                    >
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">
-                        {loc.name}
-                      </span>
-                      <span className="text-slate-500 group-hover:text-sky-600 font-mono">
-                        {loc.code}
-                      </span>
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => setShowDestSuggest(false)}
-                    className="w-full text-center py-1 text-[11px] text-slate-400 hover:text-slate-600 border-t border-slate-100 dark:border-slate-700"
-                  >
-                    Close
-                  </button>
-                </div>
-              )}
+              <IndiaPlaceInput
+                value={filters.destination}
+                onChangeText={(text) =>
+                  onUpdateFilters({ destination: text, destCoords: undefined })
+                }
+                onSelectPlace={(place) =>
+                  onUpdateFilters({
+                    destination: place.name,
+                    destCode: place.shortCode,
+                    destCoords: { lat: place.lat, lng: place.lng },
+                  })
+                }
+                biasMode="nashik"
+                placeholder="Drop location across India..."
+                iconColorClassName="text-rose-500"
+              />
             </div>
 
             {/* Travel Date */}

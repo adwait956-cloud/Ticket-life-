@@ -58,9 +58,6 @@ export async function createBookingCalendarEvent(
   }
 
   const categoryIcons: Record<string, string> = {
-    trains: '🚆',
-    flights: '✈️',
-    buses: '🚌',
     cars: '🚗',
     autos: '🛺',
     bikes: '🛵',
@@ -114,7 +111,7 @@ export async function createBookingCalendarEvent(
         { method: 'popup', minutes: 30 },  // 30 mins before
       ],
     },
-    colorId: booking.category === 'flights' ? '9' : booking.category === 'trains' ? '5' : '6',
+    colorId: booking.category === 'cars' ? '9' : booking.category === 'autos' ? '5' : '6',
   };
 
   const response = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {

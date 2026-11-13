@@ -18,7 +18,6 @@ import {
   UserPlus,
   AlertTriangle,
   X,
-  Fingerprint,
 } from 'lucide-react';
 import { BookingRecord, PassengerInfo, UserAccount } from '../types/travel';
 import { saveStoredUser, deleteStoredUser } from '../services/api';
@@ -26,14 +25,6 @@ import { PWAInstallButton } from './PWAInstallButton';
 import { sendForgotPasswordNotification } from '../services/gmailService';
 import { getAccessToken } from '../services/firebaseAuth';
 import { CalendarSync } from './CalendarSync';
-import {
-  isBiometricsSupported,
-  isPlatformBiometricAvailable,
-  hasEnrolledBiometrics,
-  getEnrolledBiometrics,
-  registerBiometricPasskey,
-  removeBiometricCredential,
-} from '../services/biometricAuth';
 
 interface AccountViewProps {
   user: UserAccount | null;
@@ -66,11 +57,6 @@ export const AccountView: React.FC<AccountViewProps> = ({
   const [securityNotice, setSecurityNotice] = useState('');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
-  // Biometric Authentication (WebAuthn)
-  const [isBioEnrolling, setIsBioEnrolling] = useState(false);
-  const [enrolledBioList, setEnrolledBioList] = useState(() => getEnrolledBiometrics());
-  const [bioNotice, setBioNotice] = useState('');
-
   // New passenger fields
   const [newPaxName, setNewPaxName] = useState('');
   const [newPaxAge, setNewPaxAge] = useState<number>(28);
@@ -93,7 +79,7 @@ export const AccountView: React.FC<AccountViewProps> = ({
               Create Account or Log In
             </h1>
             <p className="text-xs text-stone-500 dark:text-stone-400 leading-relaxed">
-              Ticket Life requires an account to book verified tickets across cars, autos, buses, bikes, trains, and flights, top up your wallet, and receive official email confirmations.
+              Ticket Life requires an account to book verified rides across cars, auto rickshaws, and bikes, top up your wallet, and receive official email confirmations.
             </p>
           </div>
 
@@ -196,7 +182,7 @@ export const AccountView: React.FC<AccountViewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {onOpenAuthModal && (
             <button
               onClick={() => onOpenAuthModal('signin')}
@@ -211,6 +197,14 @@ export const AccountView: React.FC<AccountViewProps> = ({
           >
             <LogOut className="w-3.5 h-3.5" />
             <span>Sign Out</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowDeleteModal(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl text-xs transition-colors shadow-xs"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Delete Account</span>
           </button>
         </div>
       </div>
@@ -266,7 +260,7 @@ export const AccountView: React.FC<AccountViewProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
           <div>
             <label className="block text-stone-700 dark:text-stone-300 font-bold mb-1">
-              Full Legal Name (For Tickets & IRCTC)
+              Full Legal Name (For Ride Passes & Support)
             </label>
             <input
               type="text"
@@ -317,94 +311,7 @@ export const AccountView: React.FC<AccountViewProps> = ({
           </div>
         </div>
 
-        {/* Web Authentication API: Biometric Face ID / Fingerprint Settings */}
-        <div className="p-4 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent rounded-xl border border-amber-500/30 dark:border-amber-500/40 space-y-3 text-xs">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                <Fingerprint className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="font-extrabold text-stone-900 dark:text-white flex items-center gap-2">
-                  <span>Biometric Authentication (Touch ID / Face ID / Fingerprint)</span>
-                  <span className="px-1.5 py-0.2 bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded text-[9px] font-bold">
-                    WebAuthn API
-                  </span>
-                </div>
-                <div className="text-[11px] text-stone-500 dark:text-stone-400">
-                  Enable fast 1-tap booking authorization & passwordless login on this device.
-                </div>
-              </div>
-            </div>
 
-            <span className={`text-[10px] uppercase font-black px-2 py-0.5 rounded ${
-              enrolledBioList.length > 0
-                ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60'
-                : 'text-stone-500 bg-stone-100 dark:bg-stone-800'
-            }`}>
-              {enrolledBioList.length > 0 ? 'Enrolled' : 'Not Enrolled'}
-            </span>
-          </div>
-
-          {bioNotice && (
-            <div className="p-2.5 bg-white dark:bg-stone-900 rounded-lg border border-stone-200 dark:border-stone-700 text-[11px] font-semibold text-stone-800 dark:text-stone-200">
-              {bioNotice}
-            </div>
-          )}
-
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-amber-500/20">
-            <p className="text-[11px] text-stone-600 dark:text-stone-400 max-w-sm">
-              {enrolledBioList.length > 0
-                ? `Enrolled device: ${enrolledBioList[0].deviceLabel} (Created ${new Date(enrolledBioList[0].createdAt).toLocaleDateString()})`
-                : 'No fingerprint or Face ID enrolled on this device yet. Click below to register.'}
-            </p>
-
-            <div className="flex items-center gap-2">
-              {enrolledBioList.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    removeBiometricCredential(user.email);
-                    setEnrolledBioList(getEnrolledBiometrics());
-                    setBioNotice('Biometrics removed from this device.');
-                    if (onShowToast) onShowToast('Biometric passkey removed.');
-                  }}
-                  className="px-3 py-1.5 text-[11px] font-bold text-rose-600 hover:text-rose-700 border border-rose-200 dark:border-rose-800 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-                >
-                  Remove Biometrics
-                </button>
-              )}
-
-              <button
-                type="button"
-                disabled={isBioEnrolling}
-                onClick={async () => {
-                  setIsBioEnrolling(true);
-                  setBioNotice('');
-                  try {
-                    const cred = await registerBiometricPasskey({
-                      id: user.id,
-                      email: user.email,
-                      fullName: user.fullName,
-                      phone: user.phone,
-                    });
-                    setEnrolledBioList(getEnrolledBiometrics());
-                    setBioNotice(`🎉 ${cred.deviceLabel} successfully enrolled for 1-tap booking and login!`);
-                    if (onShowToast) onShowToast('Biometrics successfully registered!');
-                  } catch (e: any) {
-                    setBioNotice(`⚠️ ${e.message || 'Could not enroll biometrics.'}`);
-                  } finally {
-                    setIsBioEnrolling(false);
-                  }
-                }}
-                className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-black text-xs rounded-lg transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
-              >
-                <Fingerprint className="w-3.5 h-3.5" />
-                <span>{isBioEnrolling ? 'Scanning Hardware...' : enrolledBioList.length > 0 ? 'Re-enroll Biometrics' : 'Enroll Fingerprint / Face ID'}</span>
-              </button>
-            </div>
-          </div>
-        </div>
 
         <div className="flex justify-end pt-2">
           <button
@@ -434,7 +341,7 @@ export const AccountView: React.FC<AccountViewProps> = ({
             Saved Frequent Co-Travelers ({savedPassengers.length})
           </h2>
           <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
-            Auto-fills passenger details during flight, train, bus, and ride bookings for 1-tap checkout.
+            Auto-fills passenger details during car, auto rickshaw, and bike bookings for 1-tap checkout.
           </p>
         </div>
 
@@ -517,32 +424,6 @@ export const AccountView: React.FC<AccountViewProps> = ({
               </button>
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* DANGER ZONE: DELETE ACCOUNT */}
-      <div className="p-6 bg-rose-50/70 dark:bg-rose-950/20 rounded-2xl border border-rose-200 dark:border-rose-900/50 shadow-xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <Trash2 className="w-4 h-4 text-rose-600 dark:text-rose-400" />
-              <h3 className="text-sm font-black text-rose-950 dark:text-rose-200">
-                Delete Account (अकाउंट हमेशा के लिए हटाएं)
-              </h3>
-            </div>
-            <p className="text-xs text-rose-700 dark:text-rose-300 leading-relaxed max-w-xl">
-              Permanently delete this account ({user.fullName ? `${user.fullName} · ` : ''}{user.email}), clear wallet balance, and purge all saved travel history from this device.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setShowDeleteModal(true)}
-            className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl text-xs transition-colors shrink-0 flex items-center justify-center gap-2 shadow-xs"
-          >
-            <Trash2 className="w-4 h-4" />
-            <span>Delete Account</span>
-          </button>
         </div>
       </div>
 

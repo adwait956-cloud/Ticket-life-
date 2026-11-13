@@ -25,6 +25,12 @@ function base64UrlEncode(str: string): string {
     .replace(/=+$/, '');
 }
 
+let notifSeq = 0;
+function createUniqueNotifId(): string {
+  notifSeq += 1;
+  return `notif-${Date.now()}-${notifSeq}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
 /**
  * Storage helpers for Email Notification logs
  */
@@ -32,7 +38,17 @@ export function getStoredNotificationLogs(): EmailNotificationLog[] {
   try {
     const raw = localStorage.getItem(NOTIFICATIONS_STORAGE_KEY);
     if (!raw) return [];
-    return JSON.parse(raw);
+    const parsed: EmailNotificationLog[] = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const seen = new Set<string>();
+    return parsed.map((entry, idx) => {
+      let id = entry?.id || createUniqueNotifId();
+      if (seen.has(id)) {
+        id = `${id}-${idx}`;
+      }
+      seen.add(id);
+      return { ...entry, id };
+    });
   } catch (e) {
     return [];
   }
@@ -41,7 +57,11 @@ export function getStoredNotificationLogs(): EmailNotificationLog[] {
 export function saveNotificationLog(log: EmailNotificationLog): void {
   try {
     const logs = getStoredNotificationLogs();
-    logs.unshift(log);
+    const existingIds = new Set(logs.map((l) => l.id));
+    const uniqueLog = existingIds.has(log.id)
+      ? { ...log, id: createUniqueNotifId() }
+      : log;
+    logs.unshift(uniqueLog);
     localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(logs));
   } catch (e) {
     console.error('Error saving notification log:', e);
@@ -80,7 +100,6 @@ async function sendRawGmailMessage(
   const encodedSubject = encodeHeaderUtf8(subject);
 
   const rawMessage = [
-    `From: Ticket Life <me>`,
     `To: ${recipientEmail}`,
     `Subject: ${encodedSubject}`,
     `MIME-Version: 1.0`,
@@ -138,30 +157,29 @@ export async function sendAccountCreatedNotification(
     <div style="padding: 24px;">
       <h2 style="font-size: 18px; font-weight: 800; color: #0f172a; margin: 0 0 12px 0;">Welcome aboard, ${userName}!</h2>
       <p style="font-size: 13px; color: #475569; line-height: 1.6; margin: 0 0 16px 0;">
-        Your verified Ticket Life travel account is now activated with email <strong>${recipientEmail}</strong>. You now have instant access to real-time ticketing across 6 transportation modes:
+        Your verified Ticket Life account is now activated with email <strong>${recipientEmail}</strong>. You now have instant access to live rides across 3 transportation modes:
       </p>
       
       <div style="background-color: #f1f5f9; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
         <ul style="margin: 0; padding-left: 18px; font-size: 13px; color: #334155; line-height: 1.8;">
-          <li><strong>Trains:</strong> Indian Railways (IRCTC Authorized) with genuine PNR & berth reservation</li>
-          <li><strong>Airplanes:</strong> Global GDS flight search with zero hidden surcharges</li>
-          <li><strong>Buses:</strong> Intercity Volvo 9600 sleepers & state express coaches</li>
-          <li><strong>Cars, Autos & Bikes:</strong> Instant city rides with background-checked chauffeurs and ride OTP</li>
+          <li><strong>Cars & Cabs:</strong> Verified sedans, SUVs, and private chauffeur rides with live GPS tracking</li>
+          <li><strong>Auto Rickshaws:</strong> Fast local meter and electric auto rickshaws with instant ride OTP</li>
+          <li><strong>Bikes:</strong> Quick two-wheeler moto taxis and commuter rentals to beat city traffic</li>
         </ul>
       </div>
 
       <div style="background-color: #ecfdf5; border: 1px dashed #10b981; padding: 14px; border-radius: 8px; margin-bottom: 20px;">
         <div style="font-size: 11px; font-weight: 700; color: #059669; text-transform: uppercase;">Your Welcome Gift Coupon</div>
         <div style="font-size: 16px; font-weight: 800; color: #065f46; font-family: monospace; margin: 4px 0;">FIRSTTRIP</div>
-        <div style="font-size: 12px; color: #047857;">Get Flat 15% off on your first train, flight, bus, or cab booking.</div>
+        <div style="font-size: 12px; color: #047857;">Get Flat 15% off on your first car, auto rickshaw, or bike ride booking.</div>
       </div>
 
       <p style="font-size: 12px; color: #64748b; margin: 0;">
-        If you did not create this account, please immediately contact our 24/7 support desk at adwait956@gmail.com.
+        If you did not create this account, please immediately contact our 24/7 support desk at support@ticketlife.app.
       </p>
     </div>
     <div style="padding: 16px 24px; background-color: #0f172a; color: #94a3b8; font-size: 11px; text-align: center;">
-      Notification sent from notifications@ticketlife.com · Ticket Life Technologies
+      Notification sent from support@ticketlife.app · Ticket Life Technologies
     </div>
   </div>
 </body>
@@ -178,10 +196,10 @@ export async function sendAccountCreatedNotification(
       console.error('Gmail API welcome email direct dispatch failed:', e);
       sendStatus = 'failed';
       saveNotificationLog({
-        id: `notif-${Date.now()}`,
+        id: createUniqueNotifId(),
         type: 'account_created',
         recipientEmail,
-        senderEmail: 'notifications@ticketlife.com',
+        senderEmail: 'support@ticketlife.app',
         subject,
         timestamp: new Date().toISOString(),
         status: 'failed',
@@ -193,10 +211,10 @@ export async function sendAccountCreatedNotification(
   }
 
   saveNotificationLog({
-    id: `notif-${Date.now()}`,
+    id: createUniqueNotifId(),
     type: 'account_created',
     recipientEmail,
-    senderEmail: 'notifications@ticketlife.com',
+    senderEmail: 'support@ticketlife.app',
     subject,
     timestamp: new Date().toISOString(),
     status: sendStatus,
@@ -241,11 +259,11 @@ export async function sendForgotPasswordNotification(
       </div>
 
       <p style="font-size: 12px; color: #64748b; line-height: 1.5; margin: 0 0 8px 0;">
-        If you did not request this code, your account credentials may be compromised. Please lock your account or contact adwait956@gmail.com.
+        If you did not request this code, your account credentials may be compromised. Please lock your account or contact support@ticketlife.app.
       </p>
     </div>
     <div style="padding: 16px 24px; background-color: #0f172a; color: #94a3b8; font-size: 11px; text-align: center;">
-      Automated security alert from notifications@ticketlife.com · Ticket Life Security Operations
+      Automated security alert from support@ticketlife.app · Ticket Life Security Operations
     </div>
   </div>
 </body>
@@ -262,10 +280,10 @@ export async function sendForgotPasswordNotification(
       console.error('Gmail API forgot password email failed:', e);
       sendStatus = 'failed';
       saveNotificationLog({
-        id: `notif-${Date.now()}`,
+        id: createUniqueNotifId(),
         type: 'forgot_password',
         recipientEmail,
-        senderEmail: 'notifications@ticketlife.com',
+        senderEmail: 'support@ticketlife.app',
         subject,
         timestamp: new Date().toISOString(),
         status: 'failed',
@@ -277,10 +295,10 @@ export async function sendForgotPasswordNotification(
   }
 
   saveNotificationLog({
-    id: `notif-${Date.now()}`,
+    id: createUniqueNotifId(),
     type: 'forgot_password',
     recipientEmail,
-    senderEmail: 'notifications@ticketlife.com',
+    senderEmail: 'support@ticketlife.app',
     subject,
     timestamp: new Date().toISOString(),
     status: sendStatus,
@@ -299,7 +317,13 @@ export async function sendLoginSecurityAlertNotification(
   recipientEmail: string,
   userName: string,
   accessToken?: string | null
-): Promise<{ id: string; threadId?: string }> {
+): Promise<{
+  id: string;
+  threadId?: string;
+  delivered: boolean;
+  channel: 'gmail_api' | 'server_email' | 'pending_auth';
+  error?: string;
+}> {
   const loginTime = new Date().toLocaleString('en-IN', {
     timeZone: 'Asia/Kolkata',
     dateStyle: 'medium',
@@ -349,36 +373,67 @@ export async function sendLoginSecurityAlertNotification(
       </p>
     </div>
     <div style="padding: 16px 24px; background-color: #0f172a; color: #94a3b8; font-size: 11px; text-align: center;">
-      Security notification automatically dispatched from notifications@ticketlife.com · Ticket Life Security Operations
+      Security notification automatically dispatched from support@ticketlife.app · Ticket Life Security Operations
     </div>
   </div>
 </body>
 </html>
   `;
 
-  let msgId = `sim-${Date.now()}`;
+  let msgId = `pending-login-alert-${Date.now()}`;
+  let delivered = false;
+  let channel: 'gmail_api' | 'server_email' | 'pending_auth' = 'pending_auth';
+  let errorMsg: string | undefined;
+
   if (accessToken) {
     try {
       const res = await sendRawGmailMessage(recipientEmail, subject, htmlContent, accessToken);
       msgId = res.id;
-    } catch (e) {
-      console.warn('Gmail API direct send error for login alert (saving log):', e);
+      delivered = true;
+      channel = 'gmail_api';
+    } catch (e: any) {
+      errorMsg = e?.message || 'Gmail API delivery failed';
+      console.warn('Gmail API direct send error for login alert:', e);
+    }
+  }
+
+  if (!delivered) {
+    try {
+      const srvRes = await fetch('/api/email/login-alert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recipientEmail,
+          userName,
+          subject,
+          htmlContent,
+        }),
+      });
+      const srvData = await srvRes.json().catch(() => ({}));
+      if (srvRes.ok && srvData?.ok) {
+        msgId = srvData.id || msgId;
+        delivered = true;
+        channel = 'server_email';
+        errorMsg = undefined;
+      }
+    } catch {
+      // ignore if backend email service not configured
     }
   }
 
   saveNotificationLog({
-    id: `notif-${Date.now()}`,
+    id: createUniqueNotifId(),
     type: 'login_alert',
     recipientEmail,
-    senderEmail: 'notifications@ticketlife.com',
+    senderEmail: 'noreply@ticket-life-c4b76.firebaseapp.com',
     subject,
     timestamp: new Date().toISOString(),
-    status: 'sent',
-    gmailMessageId: msgId,
-    meta: { userName, loginTime },
+    status: delivered ? 'sent' : 'pending',
+    gmailMessageId: delivered ? msgId : undefined,
+    meta: { userName, loginTime, channel, error: errorMsg },
   });
 
-  return { id: msgId };
+  return { id: msgId, delivered, channel, error: errorMsg };
 }
 
 /**
@@ -475,10 +530,10 @@ export async function sendPriceDropAlertNotification(
   }
 
   saveNotificationLog({
-    id: `notif-${Date.now()}`,
+    id: createUniqueNotifId(),
     type: 'price_alert',
     recipientEmail: recipientEmail || 'Passenger',
-    senderEmail: 'notifications@ticketlife.com',
+    senderEmail: 'support@ticketlife.app',
     subject,
     timestamp: new Date().toISOString(),
     status: 'sent',
@@ -641,7 +696,7 @@ export async function sendTicketEmail(
         This confirmed ticket was issued through authorized provider partners on <strong>Ticket Life</strong>.
       </p>
       <p style="margin: 0;">
-        Need assistance or 24/7 support? Reach out to adwait956@gmail.com or visit the Ticket Life Help Center.
+        Need assistance or 24/7 support? Reach out to support@ticketlife.app or visit the Ticket Life Help Center.
       </p>
     </div>
 
@@ -660,10 +715,10 @@ export async function sendTicketEmail(
   }
 
   saveNotificationLog({
-    id: `notif-${Date.now()}`,
+    id: createUniqueNotifId(),
     type: 'travel_booking',
     recipientEmail,
-    senderEmail: 'adwait956@gmail.com',
+    senderEmail: 'support@ticketlife.app',
     subject,
     timestamp: new Date().toISOString(),
     status: 'sent',
@@ -680,7 +735,7 @@ export async function fetchTravelEmails(accessToken: string): Promise<GmailMessa
   if (!accessToken) return [];
 
   try {
-    const query = encodeURIComponent('subject:(ticket OR booking OR flight OR train OR bus OR IRCTC OR PNR OR airline)');
+    const query = encodeURIComponent('subject:(ticket OR booking OR ride OR cab OR auto OR bike)');
     const listRes = await fetch(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=10&q=${query}`,
       {
@@ -746,45 +801,38 @@ export function buildTravelDigest(
     const snip = msg.snippet;
     const lower = `${sub} ${snip}`.toLowerCase();
 
-    // Determine category
-    let category: any = 'flights';
-    if (lower.includes('vande bharat') || lower.includes('rail') || lower.includes('train') || lower.includes('irctc')) {
-      category = 'trains';
-    } else if (lower.includes('bus') || lower.includes('zingbus') || lower.includes('sleeper')) {
-      category = 'buses';
-    } else if (lower.includes('cab') || lower.includes('uber') || lower.includes('ola') || lower.includes('sedan')) {
-      category = 'cars';
+    // Determine category among Cars, Autos, Bikes
+    let category: 'cars' | 'autos' | 'bikes' = 'cars';
+    if (lower.includes('auto') || lower.includes('rickshaw')) {
+      category = 'autos';
+    } else if (lower.includes('bike') || lower.includes('moto') || lower.includes('scooter')) {
+      category = 'bikes';
     }
 
     // Extract carrier name
-    let carrier = 'Airline / Carrier';
-    if (lower.includes('indigo') || lower.includes('6e')) carrier = 'IndiGo Airlines';
-    else if (lower.includes('air india') || lower.includes('ai-')) carrier = 'Air India';
-    else if (lower.includes('vande bharat')) carrier = 'Indian Railways (Vande Bharat)';
-    else if (lower.includes('shatabdi')) carrier = 'Indian Railways (Shatabdi Exp)';
-    else if (lower.includes('rajdhani')) carrier = 'Indian Railways (Rajdhani Exp)';
-    else if (lower.includes('zingbus')) carrier = 'Zingbus Diamond Sleeper';
-    else if (lower.includes('emirates')) carrier = 'Emirates';
+    let carrier = 'Ticket Life Mobility';
+    if (category === 'autos') carrier = 'Ticket Life Auto Rickshaw';
+    else if (category === 'bikes') carrier = 'Ticket Life Bike Taxi';
 
-    // Extract PNR
-    const pnrMatch = lower.match(/pnr[:\s\-#]*([a-z0-9\-]{6,12})/i);
-    const pnr = pnrMatch ? pnrMatch[1].toUpperCase() : `PNR-${Math.floor(100000 + Math.random() * 900000)}`;
+    // Extract Ride Ref
+    const pnrMatch = lower.match(/(?:ref|pnr|otp)[:\s\-#]*([a-z0-9\-]{5,12})/i);
+    const pnr = pnrMatch ? pnrMatch[1].toUpperCase() : `RIDE-${Math.floor(100000 + Math.random() * 900000)}`;
 
     digestItems.push({
       id: `digest-gmail-${msg.id}`,
       source: 'gmail_parsed',
       carrier,
-      serviceNumber: carrier.includes('IndiGo') ? '6E-205' : carrier.includes('Air India') ? 'AI-802' : '20608',
+      serviceNumber: category === 'autos' ? 'AUTO-LIVE' : category === 'bikes' ? 'BIKE-LIVE' : 'CAB-LIVE',
       category,
-      origin: lower.includes('delhi') ? 'New Delhi (DEL)' : lower.includes('chennai') ? 'Chennai Central (MAS)' : 'Origin City',
-      originCode: lower.includes('delhi') ? 'DEL' : lower.includes('chennai') ? 'MAS' : 'ORG',
-      destination: lower.includes('mumbai') ? 'Mumbai (BOM)' : lower.includes('bengaluru') ? 'KSR Bengaluru (SBC)' : 'Dest City',
-      destCode: lower.includes('mumbai') ? 'BOM' : lower.includes('bengaluru') ? 'SBC' : 'DST',
+      origin: lower.includes('delhi') ? 'New Delhi (DEL)' : lower.includes('chennai') ? 'Chennai (MAA)' : 'Pickup Hub',
+      originCode: lower.includes('delhi') ? 'DEL' : lower.includes('chennai') ? 'MAA' : 'ORG',
+      destination: lower.includes('mumbai') ? 'Mumbai (BOM)' : lower.includes('bengaluru') ? 'Bengaluru (BLR)' : 'Drop Point',
+      destCode: lower.includes('mumbai') ? 'BOM' : lower.includes('bengaluru') ? 'BLR' : 'DST',
       departureDate: '2026-11-18',
       departureTime: '07:15 AM',
-      departureCountdown: idx === 0 ? 'Departs in 18 hours' : 'Departs on Nov 18',
+      departureCountdown: idx === 0 ? 'Pickup Soon' : 'Scheduled Ride',
       pnrOrRef: pnr,
-      platformOrTerminal: category === 'flights' ? 'Terminal 3 · Gate 34B' : 'Platform 1',
+      platformOrTerminal: 'Pickup Bay',
       statusText: 'Verified via Gmail Itinerary',
       gmailSnippet: snip,
       rawDate: msg.date,

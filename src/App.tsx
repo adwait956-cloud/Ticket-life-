@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { APIProvider } from '@vis.gl/react-google-maps';
 import {
   BookingRecord,
   EmailNotificationLog,
@@ -22,9 +23,32 @@ import {
   saveStoredUser,
   deleteStoredUser,
   searchTransportOptions,
+  createConfirmedBooking,
+  addWalletFunds,
 } from './services/api';
-import { TRANSPORT_CATALOG } from './data/mockData';
-import { initAuth, logoutGoogle, setCachedAccessToken, getAccessToken, googleSignIn } from './services/firebaseAuth';
+import {
+  DatabaseConnectionState,
+  subscribeToDatabaseRides,
+  saveBookingToDatabase,
+  updateBookingInDatabase,
+} from './services/realtimeRides';
+import {
+  getEnvGoogleMapsKey,
+  resolveGoogleMapsKey,
+  MapsAvailabilityContext,
+} from './services/mapsConfig';
+import {
+  initAuth,
+  logoutGoogle,
+  setCachedAccessToken,
+  getAccessToken,
+  googleSignIn,
+  firebaseDeleteCurrentUser,
+  purgeAdwaitFromDatabase,
+} from './services/firebaseAuth';
+import { deleteUser, signOut } from 'firebase/auth';
+import { auth } from './services/firebaseAuth';
+import { verifyRealGatewayOrder } from './services/paymentService';
 import { buildTravelDigest, fetchTravelEmails, sendTicketEmail } from './services/gmailService';
 import { createBookingCalendarEvent } from './services/calendarService';
 import { Navbar } from './components/Navbar';
@@ -48,6 +72,8 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { AuthModal } from './components/AuthModal';
 import { WalletPaymentHistoryView } from './components/WalletPaymentHistoryView';
 import { TravelHistoryView } from './components/TravelHistoryView';
+import { AddRealRideModal } from './components/AddRealRideModal';
+import { IndiaMapsExplorer } from './components/IndiaMapsExplorer';
 import {
   ShieldCheck,
   CheckCircle2,
@@ -56,6 +82,8 @@ import {
   Phone,
   Ticket,
   BellRing,
+  PlusCircle,
+  Database,
 } from 'lucide-react';
 
 export default function App() {
@@ -90,13 +118,13 @@ export default function App() {
     buildTravelDigest([], bookings)
   );
 
-  // Search filter state
+  // Search filter state (Cars, Auto Rickshaws & Bikes only)
   const [filters, setFilters] = useState<SearchFilterState>({
-    category: 'trains',
-    origin: 'Chennai Central',
-    originCode: 'MAS',
-    destination: 'KSR Bengaluru',
-    destCode: 'SBC',
+    category: 'cars',
+    origin: '',
+    originCode: '',
+    destination: '',
+    destCode: '',
     departDate: '2026-11-10',
     isRoundTrip: false,
     passengers: 1,
@@ -104,9 +132,17 @@ export default function App() {
     acOnly: false,
   });
 
-  const [searchResults, setSearchResults] = useState<TransportOption[]>(() =>
-    searchTransportOptions(filters)
-  );
+  // Live Firebase Realtime Database (ticket-life-c4b76) Real Rides State
+  const [realDatabaseRides, setRealDatabaseRides] = useState<TransportOption[]>([]);
+  const [dbStatus, setDbStatus] = useState<DatabaseConnectionState>('connecting');
+  const [dbErrorMessage, setDbErrorMessage] = useState<string | undefined>(undefined);
+  const [dbRefreshKey, setDbRefreshKey] = useState<number>(0);
+  const [showAllCategories, setShowAllCategories] = useState<boolean>(true);
+  const [hasAutoExpandedAll, setHasAutoExpandedAll] = useState<boolean>(false);
+  const [isAddRideModalOpen, setIsAddRideModalOpen] = useState<boolean>(false);
+  const [specialRideCategory, setSpecialRideCategory] = useState<TransportCategory>('cars');
+
+  const [searchResults, setSearchResults] = useState<TransportOption[]>([]);
 
   // Modals
   const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
@@ -127,6 +163,11 @@ export default function App() {
     currentPrice?: number;
   } | null>(null);
 
+  // Google Maps Platform Key & Demo Quota Banner State
+  const [mapsApiKey, setMapsApiKey] = useState<string>(() => getEnvGoogleMapsKey());
+  const [mapsKeyChecked, setMapsKeyChecked] = useState<boolean>(() => Boolean(getEnvGoogleMapsKey()));
+  const [isMapsQuotaExceeded, setIsMapsQuotaExceeded] = useState<boolean>(false);
+
   // Toast notification
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -134,6 +175,17 @@ export default function App() {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 4500);
   };
+
+  useEffect(() => {
+    const onQuotaExceeded = () => setIsMapsQuotaExceeded(true);
+    window.addEventListener('gmp-quota-exceeded', onQuotaExceeded);
+    resolveGoogleMapsKey()
+      .then((key) => {
+        if (key) setMapsApiKey(key);
+      })
+      .finally(() => setMapsKeyChecked(true));
+    return () => window.removeEventListener('gmp-quota-exceeded', onQuotaExceeded);
+  }, []);
 
   // Evaluate price alerts whenever search results or options change
   useEffect(() => {
@@ -168,13 +220,14 @@ export default function App() {
     });
   }, [bookings]);
 
-  // One-time startup purge of legacy "Adwait Sharma" account and cached sessions
+  // Complete purge of adwait956 account and legacy cached sessions
   useEffect(() => {
-    const isPurged = localStorage.getItem('ticketlife_adwait_purged_v4') === 'true';
+    const isPurged = localStorage.getItem('ticketlife_adwait956_purged_v5') === 'true';
     if (!isPurged) {
       deleteStoredUser();
       logoutGoogle().catch(() => {});
-      localStorage.setItem('ticketlife_adwait_purged_v4', 'true');
+      purgeAdwaitFromDatabase().catch(() => {});
+      localStorage.setItem('ticketlife_adwait956_purged_v5', 'true');
       setCurrentUser(null);
       setGoogleUserEmail(null);
       setBookings([]);
@@ -184,12 +237,114 @@ export default function App() {
     }
   }, []);
 
-  // Initialize Firebase Auth listener solely for background OAuth tokens (never auto-logins Adwait)
+  // Initialize Firebase Auth listener + auto-delete adwait956 if still cached in Firebase Auth
+  const [authUserUid, setAuthUserUid] = useState<string | null>(null);
   useEffect(() => {
-    initAuth((user, token) => {
-      if (token) setCachedAccessToken(token);
-    });
+    const unsubAuth = initAuth(
+      async (user, token) => {
+        if (user.email && user.email.toLowerCase().includes('adwait956')) {
+          try {
+            await purgeAdwaitFromDatabase();
+            await deleteUser(user);
+          } catch {
+            await signOut(auth).catch(() => {});
+          }
+          deleteStoredUser();
+          setCurrentUser(null);
+          setGoogleUserEmail(null);
+          setAuthUserUid(null);
+          setIsAuthOpen(true);
+          setAuthInitialMode('signup');
+          return;
+        }
+        if (token) setCachedAccessToken(token);
+        setAuthUserUid(user.uid);
+      },
+      () => {
+        setAuthUserUid(null);
+      }
+    );
+    return () => {
+      if (typeof unsubAuth === 'function') unsubAuth();
+    };
   }, []);
+
+  // Verify returning Cashfree / PhonePe payment redirect URL if present
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const cfOrderId = url.searchParams.get('cf_order_id');
+    const ppTxnId = url.searchParams.get('pp_txn_id');
+    const orderId = cfOrderId || ppTxnId;
+    const gateway: 'cashfree' | 'phonepe' = cfOrderId ? 'cashfree' : 'phonepe';
+
+    if (!orderId) return;
+
+    const rawPending = sessionStorage.getItem('ticketlife_pending_pg_txn');
+    url.searchParams.delete('cf_order_id');
+    url.searchParams.delete('pp_txn_id');
+    window.history.replaceState({}, '', url.toString());
+
+    verifyRealGatewayOrder(orderId, gateway)
+      .then((res) => {
+        if (!res.paid) {
+          showToast(`Payment status: ${res.status}. Not confirmed.`);
+          return;
+        }
+        if (rawPending) {
+          const parsed = JSON.parse(rawPending);
+          const ctx = parsed?.context;
+          if (ctx?.type === 'booking' && ctx.option) {
+            const bkg = createConfirmedBooking({
+              option: ctx.option,
+              passengers: ctx.passengers || [],
+              fareBreakdown: ctx.fareBreakdown,
+              paymentMethod: ctx.paymentMethod || 'UPI',
+              paymentTxnId: res.txnId,
+              travelDate: ctx.travelDate || filters.departDate,
+            });
+            handleBookingConfirmed(bkg);
+            setSelectedTicketToView(bkg);
+          } else if (ctx?.type === 'wallet_topup' && ctx.amount) {
+            addWalletFunds(Number(ctx.amount), `${ctx.method || 'PG'} (${res.txnId})`);
+            setCurrentUser(getStoredUser());
+            showToast(`₹${ctx.amount} verified & added to Wallet!`);
+          }
+          sessionStorage.removeItem('ticketlife_pending_pg_txn');
+        }
+      })
+      .catch((err) => {
+        showToast(err?.message || 'Unable to verify returning payment.');
+      });
+  }, []);
+
+  // Subscribe to real rides from Firebase Realtime Database (ticket-life-c4b76)
+  useEffect(() => {
+    setDbStatus('connecting');
+    const unsubRides = subscribeToDatabaseRides((res) => {
+      setRealDatabaseRides(res.rides);
+      setDbStatus(res.status);
+      setDbErrorMessage(res.errorMessage);
+    });
+    return () => {
+      unsubRides();
+    };
+  }, [authUserUid, dbRefreshKey]);
+
+  // Recompute displayed search results whenever live DB rides, filters, or category mode changes
+  useEffect(() => {
+    if (realDatabaseRides.length > 0 && !hasAutoExpandedAll) {
+      const hasMatchInDefaultCategory = realDatabaseRides.some(
+        (r) => r.category === filters.category
+      );
+      if (!hasMatchInDefaultCategory) {
+        setShowAllCategories(true);
+      }
+      setHasAutoExpandedAll(true);
+    }
+    setSearchResults(
+      searchTransportOptions(filters, realDatabaseRides, showAllCategories)
+    );
+  }, [realDatabaseRides, filters, showAllCategories, hasAutoExpandedAll]);
 
   // Scan Gmail for travel messages and update Travel Digest
   const handleScanGmailForDigest = async () => {
@@ -212,44 +367,30 @@ export default function App() {
       setDigestItems(parsedDigest);
       showToast(`Travel Digest updated! Found ${emails.length} itinerary message(s) in Gmail.`);
     } catch (err: any) {
-      console.error('Error scanning Gmail:', err);
+      console.warn('Gmail scan notice:', err?.message || err);
       showToast('Unable to scan Gmail messages. Showing confirmed bookings.');
     } finally {
       setIsScanningGmail(false);
     }
   };
 
-  // Execute search whenever filters change
+  // Execute search whenever filters change (strictly against live Firebase DB rides)
   const handleUpdateFilters = (newFilters: Partial<SearchFilterState>) => {
     setFilters((prev) => {
       const updated = { ...prev, ...newFilters };
-      setSearchResults(searchTransportOptions(updated));
+      setSearchResults(
+        searchTransportOptions(updated, realDatabaseRides, showAllCategories)
+      );
       return updated;
     });
   };
 
   const handleSelectCategory = (category: TransportCategory) => {
-    let origin = 'Chennai Central';
-    let originCode = 'MAS';
-    let dest = 'KSR Bengaluru';
-    let destCode = 'SBC';
-
-    if (category === 'flights') {
-      origin = 'New Delhi (DEL)';
-      originCode = 'DEL';
-      dest = 'Mumbai (BOM)';
-      destCode = 'BOM';
-    } else if (category === 'buses') {
-      origin = 'Delhi Kashmere Gate ISBT';
-      originCode = 'ISBT-DEL';
-      dest = 'Jaipur Sindhi Camp';
-      destCode = 'SC-JP';
-    } else if (category === 'cars' || category === 'autos' || category === 'bikes') {
-      origin = 'Connaught Place';
-      originCode = 'CP-DEL';
-      dest = 'New Delhi Railway Station (NDLS)';
-      destCode = 'NDLS';
-    }
+    setShowAllCategories(false);
+    let origin = '';
+    let originCode = '';
+    let dest = '';
+    let destCode = '';
 
     handleUpdateFilters({
       category,
@@ -288,7 +429,8 @@ export default function App() {
 
   const handleBookingConfirmed = (newBooking: BookingRecord) => {
     refreshData();
-    showToast(`Booking ${newBooking.bookingRef} Confirmed! Official confirmation ready.`);
+    saveBookingToDatabase(newBooking, currentUser?.id);
+    showToast(`Booking ${newBooking.bookingRef} Confirmed & synced to Firebase DB!`);
 
     // Automatically send confirmed ticket email directly to user's registered email
     const recipient = currentUser?.email || googleUserEmail;
@@ -332,10 +474,15 @@ export default function App() {
 
   const handleBookingCancelled = (updated: BookingRecord) => {
     refreshData();
+    updateBookingInDatabase(updated);
     if (selectedTicketToView?.id === updated.id) {
       setSelectedTicketToView(updated);
     }
-    showToast(`Booking ${updated.bookingRef} cancelled. Refund of ₹${updated.cancellationDetails?.refundAmount} initiated.`);
+    if (updated.paymentStatus === 'pay_after_ride') {
+      showToast(`Booking ${updated.bookingRef} cancelled (No upfront charge).`);
+    } else {
+      showToast(`Booking ${updated.bookingRef} cancelled. Refund of ₹${updated.cancellationDetails?.refundAmount} initiated.`);
+    }
   };
 
   const handleLogout = async () => {
@@ -348,7 +495,8 @@ export default function App() {
     setIsAuthOpen(true);
   };
 
-  const handleDeleteAccount = () => {
+  const handleDeleteAccount = async () => {
+    await firebaseDeleteCurrentUser();
     deleteStoredUser();
     setCurrentUser(null);
     setGoogleUserEmail(null);
@@ -408,8 +556,26 @@ export default function App() {
     }
   };
 
-  return (
+  const appContent = (
     <div className="min-h-screen bg-[#fafaf9] dark:bg-[#080b11] text-stone-900 dark:text-stone-100 flex flex-col font-sans transition-colors antialiased">
+      {/* Top-Level Google Maps Platform Quota Notice */}
+      {isMapsQuotaExceeded && (
+        <div className="bg-amber-50 border-b border-amber-200 text-amber-900 px-4 py-2.5 text-xs md:text-sm text-center sticky top-0 z-50 shadow-sm">
+          <span>
+            Google Maps Platform quota reached. If you are the app owner, visit{' '}
+            <a
+              href="https://developers.google.com/maps/ai/ai-studio?utm_campaign=gmp_mcp_codeassist_v1_aistudio#quota_exceeded_errors"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline font-semibold text-amber-950 hover:text-amber-800"
+            >
+              maps developer site
+            </a>{' '}
+            for instructions to update your account.
+          </span>
+        </div>
+      )}
+
       {/* Toast Alert */}
       {toastMessage && (
         <div className="fixed top-20 right-4 z-50 bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 px-4 py-2.5 rounded-xl shadow-2xl border border-stone-700 dark:border-stone-300 text-xs font-semibold flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
@@ -425,7 +591,10 @@ export default function App() {
         currentUser={currentUser}
         googleUserEmail={googleUserEmail}
         onOpenAuth={() => setIsAuthOpen(true)}
-        onOpenNotifications={() => setIsNotificationCenterOpen(true)}
+        onOpenAddRide={() => {
+          setSpecialRideCategory(filters.category);
+          setIsAddRideModalOpen(true);
+        }}
         onLogout={handleLogout}
         isAdminMode={isAdminMode}
         onToggleAdminMode={() => {
@@ -439,7 +608,7 @@ export default function App() {
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-8">
-        {/* BUTTON 1: BOOKING TICKET (CARS, AUTOS, BUSES, BIKES, TRAINS, AIRPLANES) */}
+        {/* BUTTON 1: BOOKING RIDE (CARS, AUTO RICKSHAWS, BIKES) */}
         {(activeTab === 'booking' || activeTab === 'home') && (
           <div className="space-y-8">
             {/* Travel Digest Card (Gmail parser & Upcoming departure times) */}
@@ -461,7 +630,7 @@ export default function App() {
               onOpenGmailNotificationModal={() => setIsNotificationCenterOpen(true)}
             />
 
-            {/* Category Navigation Bar (All 6 Categories: Cars, Autos, Bikes, Trains, Airplanes, Buses) */}
+            {/* Category Navigation Bar (3 Categories: Cars, Auto Rickshaws, Bikes) */}
             <CategoryNav
               selectedCategory={filters.category}
               onSelectCategory={handleSelectCategory}
@@ -471,13 +640,116 @@ export default function App() {
             <SearchHero
               filters={filters}
               onUpdateFilters={handleUpdateFilters}
-              onExecuteSearch={() => setSearchResults(searchTransportOptions(filters))}
+              onExecuteSearch={() =>
+                setSearchResults(
+                  searchTransportOptions(filters, realDatabaseRides, showAllCategories)
+                )
+              }
             />
+
+            {/* Interactive Google Maps Explorer · All India & Complete Nashik Places */}
+            {mapsApiKey ? (
+              <IndiaMapsExplorer
+                filters={filters}
+                onUpdateFilters={handleUpdateFilters}
+                onBookInstantRouteRide={(opt) => setBookingOptionToBook(opt)}
+              />
+            ) : (
+              <div className="p-6 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 text-center text-xs text-stone-500">
+                {mapsKeyChecked
+                  ? 'Google Maps API key not configured. Add VITE_GOOGLE_MAPS_API_KEY in your environment to enable the interactive Nashik & All-India Map.'
+                  : 'Loading Google Maps · Nashik & All India Live Map...'}
+              </div>
+            )}
+
+            {/* Live Firebase Realtime Database Connection Bar */}
+            <div className="p-3.5 bg-gradient-to-r from-emerald-500/10 via-emerald-500/5 to-transparent dark:from-emerald-500/15 border border-emerald-500/30 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                  <Database className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-extrabold text-stone-900 dark:text-white">
+                      Firebase Realtime Database Connected
+                    </span>
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase ${
+                        dbStatus === 'connected'
+                          ? 'bg-emerald-500 text-stone-950'
+                          : dbStatus === 'permission_denied'
+                          ? 'bg-rose-500 text-white'
+                          : 'bg-amber-500 text-stone-950'
+                      }`}
+                    >
+                      {dbStatus === 'connected'
+                        ? `${realDatabaseRides.length} Real Rides`
+                        : dbStatus === 'permission_denied'
+                        ? 'Permission Required'
+                        : 'Connecting...'}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-stone-600 dark:text-stone-400 font-mono">
+                    ticket-life-c4b76-default-rtdb.asia-southeast1.firebasedatabase.app
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {dbStatus === 'permission_denied' && (
+                  <button
+                    type="button"
+                    onClick={() => setDbRefreshKey((k) => k + 1)}
+                    className="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-stone-950 font-bold rounded-xl text-[11px] transition-colors cursor-pointer"
+                  >
+                    Retry DB Sync
+                  </button>
+                )}
+                {realDatabaseRides.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllCategories((prev) => !prev)}
+                    className={`px-3 py-1.5 rounded-xl text-[11px] font-bold border transition-colors cursor-pointer ${
+                      showAllCategories
+                        ? 'bg-stone-900 text-white border-stone-900 dark:bg-amber-500 dark:text-stone-950 dark:border-amber-500'
+                        : 'bg-white dark:bg-stone-900 text-stone-700 dark:text-stone-300 border-stone-300 dark:border-stone-700'
+                    }`}
+                  >
+                    {showAllCategories ? 'All Categories' : `Show All (${realDatabaseRides.length})`}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSpecialRideCategory(filters.category);
+                    setIsAddRideModalOpen(true);
+                  }}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-[11px] transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
+                >
+                  <PlusCircle className="w-3.5 h-3.5" />
+                  <span>Special Ride Request</span>
+                </button>
+              </div>
+            </div>
 
             {/* Live Search Results List */}
             <SearchResultsList
               options={searchResults}
               filters={filters}
+              dbStatus={dbStatus}
+              dbErrorMessage={dbErrorMessage}
+              totalDatabaseRidesCount={realDatabaseRides.length}
+              showAllCategories={showAllCategories}
+              onToggleShowAllCategories={() => setShowAllCategories((prev) => !prev)}
+              onOpenAddRideModal={(cat) => {
+                setSpecialRideCategory(cat || filters.category);
+                setIsAddRideModalOpen(true);
+              }}
+              onOpenSignIn={() => {
+                setAuthInitialMode('signin');
+                setIsAuthOpen(true);
+              }}
+              onRetryDatabaseSync={() => setDbRefreshKey((k) => k + 1)}
               onUpdateFilters={handleUpdateFilters}
               onSelectOptionToBook={(opt) => setBookingOptionToBook(opt)}
               onSelectOptionToTrack={(opt) => setItemToTrack(opt)}
@@ -506,6 +778,7 @@ export default function App() {
               handleRouteSelectFromExplore(cat, orig, dest);
               setActiveTab('booking');
             }}
+            onToggleAdmin={() => setIsAdminMode((prev) => !prev)}
           />
         )}
 
@@ -568,6 +841,10 @@ export default function App() {
             setBookingOptionToBook(null);
             setBookingForGmail(b);
           }}
+          onOpenLiveTracker={(b) => {
+            setBookingOptionToBook(null);
+            setItemToTrack(b);
+          }}
         />
       )}
 
@@ -582,11 +859,17 @@ export default function App() {
         />
       )}
 
-      {/* MODAL 3: Real-Time Live Journey Tracker */}
+      {/* MODAL 3: Real-Time Live Journey Tracker (OTP Gate -> Live Map -> Pay Driver) */}
       {itemToTrack && (
         <LiveTrackerModal
           item={itemToTrack}
           onClose={() => setItemToTrack(null)}
+          onBookingUpdated={(updated) => {
+            refreshData();
+            if (selectedTicketToView?.id === updated.id) {
+              setSelectedTicketToView(updated);
+            }
+          }}
         />
       )}
 
@@ -619,11 +902,14 @@ export default function App() {
             sessionStorage.setItem('ticketlife_startup_seen', 'true');
             setIsAuthOpen(false);
           }}
-          onSuccess={(u) => {
+          onSuccess={(u, token) => {
             sessionStorage.setItem('ticketlife_startup_seen', 'true');
             setCurrentUser(u);
+            if (token) {
+              setGoogleUserEmail(u.email);
+            }
             saveStoredUser(u);
-            showToast(`Welcome, ${u.fullName}! Security sign-in alert sent to ${u.email}`);
+            showToast(`Welcome, ${u.fullName}! Logged in as ${u.email}`);
           }}
           onNotificationSent={(type, email) => {
             showToast(`Security notification email (${type.replace('_', ' ')}) dispatched to ${email}!`);
@@ -651,7 +937,7 @@ export default function App() {
           initialDestCode={priceAlertModalData.destCode || filters.destCode}
           initialCategory={priceAlertModalData.category || filters.category}
           initialCurrentPrice={priceAlertModalData.currentPrice}
-          catalogOptions={searchResults.length > 0 ? searchResults : TRANSPORT_CATALOG}
+          catalogOptions={searchResults.length > 0 ? searchResults : realDatabaseRides}
           currentUser={currentUser}
           onClose={() => setPriceAlertModalData(null)}
           onAlertCreated={(alert, triggeredMatches) => {
@@ -665,32 +951,51 @@ export default function App() {
         />
       )}
 
-      {/* Footer */}
-      <footer className="mt-auto border-t border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-stone-500 text-xs py-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2 font-bold text-stone-900 dark:text-stone-100">
-              <Compass className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-              <span>TICKET LIFE TRAVEL SUPER APP</span>
-              <span className="font-normal text-stone-400">· Real Travel, Verified Tickets</span>
-            </div>
+      {/* MODAL 9: Special Custom Ride Request */}
+      {isAddRideModalOpen && (
+        <AddRealRideModal
+          defaultCategory={specialRideCategory}
+          defaultOrigin={filters.origin}
+          defaultOriginCoords={filters.originCoords}
+          defaultDestination={filters.destination}
+          defaultDestCoords={filters.destCoords}
+          onClose={() => setIsAddRideModalOpen(false)}
+          onSuccess={(rideId) => {
+            showToast(`Special ride live & ready! Ref: ${rideId}`);
+          }}
+        />
+      )}
 
-            <div className="flex items-center gap-4 text-stone-400">
-              <span>IRCTC Authorized Railway</span>
-              <span aria-hidden="true">·</span>
-              <span>IATA / GDS Flights</span>
-              <span aria-hidden="true">·</span>
-              <span>PCI-DSS Secured</span>
-              <span aria-hidden="true">·</span>
-              <span>Gmail Integrated</span>
-            </div>
+      {/* Footer */}
+      {/* Footer - Design Variation 3: Ticket Life Cyber Audit Status */}
+      <footer className="mt-auto border-t border-[#26262b] bg-[#0c0c0e] text-white/50 text-[11px] font-mono-code py-4 px-4 sm:px-8">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="ticket-status-dot"></span>
+            <span className="text-[#00ff88] font-bold tracking-wider">SYSTEM_ACTIVE // SECURE_SOCKET_CONNECTED</span>
           </div>
-          <div className="mt-4 pt-4 border-t border-stone-100 dark:border-stone-800 flex justify-between items-center text-[11px] text-stone-400">
-            <p>© 2026 Ticket Life Technologies. All Rights Reserved.</p>
-            <p>Verified Partner Gateway Architecture · IRCTC & IATA Certified</p>
+
+          <div className="text-center md:text-right text-[10px] text-white/40 tracking-wider">
+            TICKET_LIFE_SUPER_APP // CARS · AUTO RICKSHAWS · BIKES · FIREBASE RTDB LIVE · PCI-DSS SECURED · GMAIL INTEGRATED
           </div>
         </div>
       </footer>
     </div>
+  );
+
+  if (mapsApiKey) {
+    return (
+      <APIProvider apiKey={mapsApiKey} region="IN" language="en">
+        <MapsAvailabilityContext.Provider value={true}>
+          {appContent}
+        </MapsAvailabilityContext.Provider>
+      </APIProvider>
+    );
+  }
+
+  return (
+    <MapsAvailabilityContext.Provider value={false}>
+      {appContent}
+    </MapsAvailabilityContext.Provider>
   );
 }

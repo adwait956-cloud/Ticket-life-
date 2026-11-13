@@ -48,13 +48,17 @@ export function saveStoredBookings(bookings: BookingRecord[]): void {
   }
 }
 
-// User Profile - Returns null if not logged in or if Adwait Sharma
+// User Profile - Returns null if not logged in or if purged legacy account
 export function getStoredUser(): UserAccount | null {
   try {
     const raw = localStorage.getItem(USER_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || !parsed.email || parsed.email.trim() === '') {
+      return null;
+    }
+    if (String(parsed.email).toLowerCase().includes('adwait956')) {
+      deleteStoredUser();
       return null;
     }
     return parsed;
@@ -76,6 +80,9 @@ export function deleteStoredUser(): void {
     localStorage.removeItem(USER_STORAGE_KEY);
     localStorage.removeItem(BOOKINGS_STORAGE_KEY);
     localStorage.removeItem(WALLET_STORAGE_KEY);
+    localStorage.removeItem(PRICE_ALERTS_STORAGE_KEY);
+    localStorage.removeItem(SUPPORT_STORAGE_KEY);
+    localStorage.removeItem('ticketlife_notifications_log_v1');
     localStorage.removeItem('ticketlife_user_v1');
     localStorage.removeItem('ticketlife_user_v2');
     localStorage.removeItem('ticketlife_user_v3');
@@ -90,6 +97,7 @@ export function deleteStoredUser(): void {
     localStorage.removeItem('ticketlife_wallet_txns_v4');
     localStorage.removeItem('ticketlife_notifications_v1');
     sessionStorage.removeItem('ticketlife_startup_seen');
+    sessionStorage.removeItem('ticketlife_pending_pg_txn');
   } catch (e) {
     console.error('Error deleting stored user:', e);
   }
@@ -157,8 +165,14 @@ export function createSupportTicket(
 /**
  * Filter & search transportation catalog
  */
-export function searchTransportOptions(filters: SearchFilterState): TransportOption[] {
-  let list = TRANSPORT_CATALOG.filter((item) => item.category === filters.category);
+export function searchTransportOptions(
+  filters: SearchFilterState,
+  databaseRides: TransportOption[] = [],
+  includeAllCategories = false
+): TransportOption[] {
+  let list = includeAllCategories
+    ? [...databaseRides]
+    : databaseRides.filter((item) => item.category === filters.category);
 
   // If origin/dest are provided, match loosely
   if (filters.origin && filters.origin.trim() !== '') {
@@ -225,7 +239,7 @@ export function createConfirmedBooking(params: {
   option: TransportOption;
   passengers: PassengerInfo[];
   fareBreakdown: FareBreakdown;
-  paymentMethod: 'UPI' | 'Card' | 'NetBanking' | 'Wallet';
+  paymentMethod: 'UPI' | 'Card' | 'NetBanking' | 'Wallet' | 'PayAfterRide';
   paymentTxnId: string;
   travelDate: string;
 }): BookingRecord {
@@ -235,42 +249,31 @@ export function createConfirmedBooking(params: {
   const randomNum = Math.floor(100000 + Math.random() * 900000);
   const shortCode = Math.random().toString(36).substring(2, 6).toUpperCase();
 
-  // Generate authentic reference structures according to category
-  let pnrNumber = '';
-  let bookingRef = '';
-  let providerRef = '';
-  let seatNumbers: string[] = [];
+  // Generate authentic reference structures for Cars, Auto Rickshaws & Bikes
+  const prefix =
+    option.category === 'cars'
+      ? 'TL-CAR'
+      : option.category === 'autos'
+      ? 'TL-AUTO'
+      : 'TL-BIKE';
+  const bookingRef = `${prefix}-${randomNum}`;
+  const providerRef = `FLEET-${shortCode}-${Math.floor(100 + Math.random() * 900)}`;
+  const pnrNumber = providerRef;
+  const seatNumbers = [`Vehicle ${option.serviceNumber}`];
 
-  if (option.category === 'trains') {
-    pnrNumber = `${Math.floor(200 + Math.random() * 800)}-${Math.floor(1000000 + Math.random() * 9000000)}`;
-    bookingRef = `TL-RAIL-${randomNum}`;
-    providerRef = `IRCTC-CONF-${pnrNumber.replace('-', '')}`;
-    const coaches = ['B1', 'B2', 'C1', 'C2', 'E1', 'A1'];
-    const chosenCoach = coaches[Math.floor(Math.random() * coaches.length)];
-    seatNumbers = passengers.map((_, i) => `${chosenCoach} - ${Math.floor(10 + Math.random() * 60)} (${i % 2 === 0 ? 'Window' : 'Aisle'})`);
-  } else if (option.category === 'flights') {
-    pnrNumber = `${option.serviceNumber.substring(0, 2)}-TL${shortCode}`;
-    bookingRef = `TL-AIR-${randomNum}`;
-    providerRef = pnrNumber;
-    const rows = [10, 11, 12, 14, 15, 16, 18, 20];
-    const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
-    const row = rows[Math.floor(Math.random() * rows.length)];
-    seatNumbers = passengers.map((_, i) => `${row}${letters[i % letters.length]}`);
-  } else if (option.category === 'buses') {
-    bookingRef = `TL-BUS-${randomNum}`;
-    providerRef = `RB-CONF-${shortCode}${Math.floor(1000 + Math.random() * 9000)}`;
-    pnrNumber = providerRef;
-    seatNumbers = passengers.map((_, i) => `Seat ${Math.floor(1 + Math.random() * 30)} (${i % 2 === 0 ? 'Lower' : 'Upper'})`);
-  } else {
-    // Mobility (cars, autos, bikes)
-    bookingRef = `TL-RIDE-${randomNum}`;
-    providerRef = `FLEET-${shortCode}-${Math.floor(100 + Math.random() * 900)}`;
-    pnrNumber = providerRef;
-    seatNumbers = [`Vehicle ${option.serviceNumber}`];
-  }
+  // Ensure driver & 4-digit Start OTP always exist for Uber/Ola OTP verification
+  const generatedOtp = String(Math.floor(1000 + Math.random() * 9000));
+  const driverInfo = option.liveStatus?.driverDetails || {
+    name: option.providerName || 'Ticket Life Captain',
+    phone: '+91 98230 00000',
+    vehicleNumber: option.serviceNumber || `MH-15-TL-${generatedOtp}`,
+    rating: option.rating || 4.9,
+    otp: generatedOtp,
+  };
 
-  // Cryptographic mock token for QR
   const qrCodeToken = `${option.category.toUpperCase()}|${bookingRef}|${pnrNumber}|${option.originCode}-${option.destCode}|${passengers[0]?.fullName || 'USER'}|CONFIRMED`;
+
+  const isPayAfterRide = paymentMethod === 'PayAfterRide';
 
   const newBooking: BookingRecord = {
     id: `bkg-${Date.now()}-${randomNum}`,
@@ -284,9 +287,11 @@ export function createConfirmedBooking(params: {
     origin: option.origin,
     originCode: option.originCode,
     originAddress: option.originAddress || `${option.originTerminalOrPlatform || 'Main Boarding Terminal'}, ${option.origin}`,
+    originCoords: option.originCoords,
     destination: option.destination,
     destCode: option.destCode,
     destAddress: option.destAddress || `${option.destTerminalOrPlatform || 'Arrival Terminal'}, ${option.destination}`,
+    destCoords: option.destCoords,
     departureDate: travelDate,
     departureTime: option.departureTime,
     arrivalDate: travelDate,
@@ -297,13 +302,14 @@ export function createConfirmedBooking(params: {
     fareBreakdown,
     paymentMethod,
     paymentTxnId,
-    paymentStatus: 'paid',
+    paymentStatus: isPayAfterRide ? 'pay_after_ride' : 'paid',
     bookingStatus: 'confirmed',
+    startOtpVerified: false,
     providerName: option.providerName,
     qrCodeToken,
     terminalOrPlatform: option.originTerminalOrPlatform || 'Main Bay',
     createdAt: now.toISOString(),
-    driverInfo: option.liveStatus?.driverDetails,
+    driverInfo,
   };
 
   const existing = getStoredBookings();
@@ -316,6 +322,74 @@ export function createConfirmedBooking(params: {
   }
 
   return newBooking;
+}
+
+/**
+ * Verifies the 4-digit Start OTP (Uber/Ola style) and transitions the booking to in_progress.
+ */
+export function startRideWithOtp(
+  bookingId: string,
+  enteredOtp: string
+): { success: boolean; booking?: BookingRecord; error?: string } {
+  const bookings = getStoredBookings();
+  const index = bookings.findIndex((b) => b.id === bookingId);
+  if (index === -1) {
+    return { success: false, error: 'Booking not found.' };
+  }
+
+  const booking = bookings[index];
+  const expectedOtp = String(booking.driverInfo?.otp || '').trim();
+  if (!expectedOtp || enteredOtp.trim() !== expectedOtp) {
+    return {
+      success: false,
+      error: 'Invalid Ride OTP. Please enter the 4-digit Start OTP shared with the captain.',
+    };
+  }
+
+  const updatedBooking: BookingRecord = {
+    ...booking,
+    bookingStatus: 'in_progress',
+    startOtpVerified: true,
+    rideStartedAt: booking.rideStartedAt || new Date().toISOString(),
+  };
+
+  bookings[index] = updatedBooking;
+  saveStoredBookings(bookings);
+  return { success: true, booking: updatedBooking };
+}
+
+/**
+ * Completes the active ride at drop-off and settles payment directly with the driver (Cash or Direct UPI).
+ */
+export function completeRideAndPayDriver(
+  bookingId: string,
+  collectedMethod: 'Cash' | 'UPI' = 'Cash'
+): { success: boolean; booking?: BookingRecord; error?: string } {
+  const bookings = getStoredBookings();
+  const index = bookings.findIndex((b) => b.id === bookingId);
+  if (index === -1) {
+    return { success: false, error: 'Booking not found.' };
+  }
+
+  const booking = bookings[index];
+  const wasPayAfterRide = booking.paymentStatus === 'pay_after_ride' || booking.paymentMethod === 'PayAfterRide';
+  const settlementTxnId = wasPayAfterRide
+    ? `drv_${collectedMethod.toLowerCase()}_${Date.now().toString().slice(-6)}`
+    : booking.paymentTxnId;
+
+  const updatedBooking: BookingRecord = {
+    ...booking,
+    bookingStatus: 'completed',
+    paymentStatus: 'paid',
+    startOtpVerified: true,
+    collectedByDriverMethod: wasPayAfterRide ? collectedMethod : booking.collectedByDriverMethod,
+    paymentTxnId: settlementTxnId,
+    rideCompletedAt: new Date().toISOString(),
+  };
+
+  bookings[index] = updatedBooking;
+  saveStoredBookings(bookings);
+  return { success: true, booking: updatedBooking };
 }
 
 /**
@@ -333,18 +407,15 @@ export function cancelBooking(bookingId: string, reason: string): { success: boo
     return { success: false, error: 'Booking is already cancelled.' };
   }
 
-  // Calculate refund
-  const total = booking.fareBreakdown.totalAmount;
-  let deductionPercent = 10; // 90% refund default
-  if (booking.category === 'cars' || booking.category === 'autos' || booking.category === 'bikes') {
-    deductionPercent = 0; // 100% free cancellation for mobility rides
-  } else if (booking.category === 'flights') {
-    deductionPercent = 20; // 80% refund
-  }
+  const isPayAfterRide = booking.paymentStatus === 'pay_after_ride';
+  const total = isPayAfterRide ? 0 : booking.fareBreakdown.totalAmount;
+  const deductionPercent = 0;
 
   const deductionAmount = Math.round((total * deductionPercent) / 100);
   const refundAmount = total - deductionAmount;
-  const refundReference = `REF-TL-${Math.floor(100000 + Math.random() * 900000)}`;
+  const refundReference = isPayAfterRide
+    ? 'NO-PREPAYMENT-CANCEL'
+    : `REF-TL-${Math.floor(100000 + Math.random() * 900000)}`;
 
   const updatedBooking: BookingRecord = {
     ...booking,
@@ -363,8 +434,10 @@ export function cancelBooking(bookingId: string, reason: string): { success: boo
   bookings[index] = updatedBooking;
   saveStoredBookings(bookings);
 
-  // Automatically credit refund amount to wallet
-  addWalletRefund(refundAmount, `Refund for cancelled booking ${booking.bookingRef}`, booking.bookingRef);
+  // Only credit wallet refund if money was paid upfront
+  if (refundAmount > 0) {
+    addWalletRefund(refundAmount, `Refund for cancelled booking ${booking.bookingRef}`, booking.bookingRef);
+  }
 
   return { success: true, booking: updatedBooking };
 }

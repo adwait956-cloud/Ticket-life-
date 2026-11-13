@@ -23,7 +23,7 @@ export const OffersView: React.FC<OffersViewProps> = ({ onApplyCode }) => {
           Exclusive Travel Offers & Verified Deals
         </h1>
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-          Save on your next train, flight, bus, cab, auto, or bike trip with verified authorized partner coupons.
+          Save on your next car, auto rickshaw, or bike ride with verified Ticket Life coupons.
         </p>
       </div>
 

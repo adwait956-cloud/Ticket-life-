@@ -14,11 +14,10 @@ import {
   AlertCircle,
   Car,
   Compass,
-  Bus,
-  Plane,
-  Train,
   Bike,
   Sparkles,
+  ShieldCheck,
+  Download,
 } from 'lucide-react';
 import { BookingRecord, TransportCategory } from '../types/travel';
 
@@ -28,6 +27,7 @@ interface TravelHistoryViewProps {
   onOpenLiveTracker: (booking: BookingRecord) => void;
   onOpenGmailConfirm: (booking: BookingRecord) => void;
   onBookAgain?: (category: TransportCategory, origin: string, dest: string) => void;
+  onToggleAdmin?: () => void;
 }
 
 export const TravelHistoryView: React.FC<TravelHistoryViewProps> = ({
@@ -36,6 +36,7 @@ export const TravelHistoryView: React.FC<TravelHistoryViewProps> = ({
   onOpenLiveTracker,
   onOpenGmailConfirm,
   onBookAgain,
+  onToggleAdmin,
 }) => {
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -43,25 +44,21 @@ export const TravelHistoryView: React.FC<TravelHistoryViewProps> = ({
 
   const getCategoryIcon = (cat: TransportCategory) => {
     switch (cat) {
-      case 'trains':
-        return <Train className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />;
-      case 'flights':
-        return <Plane className="w-4 h-4 text-sky-600 dark:text-sky-400" />;
-      case 'buses':
-        return <Bus className="w-4 h-4 text-orange-600 dark:text-orange-400" />;
       case 'cars':
-        return <Car className="w-4 h-4 text-amber-600 dark:text-amber-400" />;
+        return <Car className="w-5 h-5 text-[#00ff88]" />;
       case 'autos':
-        return <Compass className="w-4 h-4 text-yellow-600 dark:text-yellow-400" />;
+        return <Compass className="w-5 h-5 text-[#00ff88]" />;
       case 'bikes':
-        return <Bike className="w-4 h-4 text-teal-600 dark:text-teal-400" />;
+        return <Bike className="w-5 h-5 text-[#00ff88]" />;
       default:
-        return <Ticket className="w-4 h-4" />;
+        return <Ticket className="w-5 h-5 text-[#00ff88]" />;
     }
   };
 
   const filtered = bookings.filter((b) => {
-    if (categoryFilter !== 'all' && b.category !== categoryFilter) return false;
+    if (categoryFilter === 'cars' && b.category !== 'cars') return false;
+    if (categoryFilter === 'autos' && b.category !== 'autos') return false;
+    if (categoryFilter === 'bikes' && b.category !== 'bikes') return false;
     if (statusFilter !== 'all' && b.bookingStatus !== statusFilter) return false;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -76,313 +73,290 @@ export const TravelHistoryView: React.FC<TravelHistoryViewProps> = ({
 
   // Calculate statistics
   const completedTrips = bookings.filter((b) => b.bookingStatus === 'completed');
-  const upcomingTrips = bookings.filter((b) => b.bookingStatus === 'confirmed');
+  const upcomingTrips = bookings.filter(
+    (b) => b.bookingStatus === 'confirmed' || b.bookingStatus === 'in_progress'
+  );
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-300">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-stone-200 dark:border-stone-800">
+    <div className="w-full grid grid-cols-1 lg:grid-cols-[300px_1fr] border border-[#26262b] rounded-2xl overflow-hidden bg-[#0c0c0e] text-white">
+      {/* SIDEBAR: Archive Metrics & Filter Console */}
+      <aside className="p-6 border-b lg:border-b-0 lg:border-r border-[#26262b] flex flex-col gap-6 bg-[#0c0c0e]">
+        {/* ARCHIVE METRICS */}
         <div>
-          <span className="text-[10px] font-bold uppercase tracking-widest text-amber-600 dark:text-amber-400">
-            TRAVEL LOGS ARCHIVE · 3RD HUB
+          <span className="font-mono-code text-[10px] tracking-widest uppercase text-[#00ff88] block mb-2">
+            ARCHIVE METRICS
           </span>
-          <h1 className="text-2xl font-black text-stone-900 dark:text-white tracking-tight">
-            Travelling History
-          </h1>
-          <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
-            Pura travel record: travel kab hua, kidhar se kidhar gaye the, exact addresses, dates, seat numbers, and boarding passes.
-          </p>
-        </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-[#16161a] border border-[#26262b] p-3.5 rounded-lg">
+              <span className="font-mono-code text-2xl font-bold block mb-1 text-white">
+                {String(upcomingTrips.length).padStart(2, '0')}
+              </span>
+              <span className="text-white/50 text-[11px] uppercase tracking-wider block">
+                Upcoming
+              </span>
+            </div>
 
-        {/* Quick summary stats */}
-        <div className="flex items-center gap-3">
-          <div className="px-3.5 py-1.5 bg-white dark:bg-stone-900 rounded-xl border border-stone-200 dark:border-stone-800 text-xs shadow-xs">
-            <span className="text-stone-400 text-[10px] uppercase font-bold block">Upcoming Trips</span>
-            <span className="text-sm font-extrabold text-amber-600 dark:text-amber-400 font-mono">
-              {upcomingTrips.length} scheduled
-            </span>
-          </div>
-          <div className="px-3.5 py-1.5 bg-white dark:bg-stone-900 rounded-xl border border-stone-200 dark:border-stone-800 text-xs shadow-xs">
-            <span className="text-stone-400 text-[10px] uppercase font-bold block">Completed Journeys</span>
-            <span className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400 font-mono">
-              {completedTrips.length} finished
-            </span>
+            <div className="bg-[#16161a] border border-[#26262b] p-3.5 rounded-lg">
+              <span className="font-mono-code text-2xl font-bold block mb-1 text-white">
+                {String(completedTrips.length).padStart(2, '0')}
+              </span>
+              <span className="text-white/50 text-[11px] uppercase tracking-wider block">
+                Finished
+              </span>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Filter and Search Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-white dark:bg-stone-900 rounded-2xl border border-stone-200 dark:border-stone-800 shadow-xs">
-        {/* Category Pills */}
-        <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold">
-          <button
-            onClick={() => setCategoryFilter('all')}
-            className={`px-3 py-1.5 rounded-lg transition-colors ${
-              categoryFilter === 'all'
-                ? 'bg-stone-900 text-white dark:bg-amber-500 dark:text-stone-950'
-                : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 hover:text-stone-900'
-            }`}
-          >
-            All Modes ({bookings.length})
-          </button>
-          {[
-            { id: 'trains', label: 'Trains' },
-            { id: 'flights', label: 'Flights' },
-            { id: 'buses', label: 'Buses' },
-            { id: 'cars', label: 'Cars' },
-            { id: 'autos', label: 'Autos' },
-            { id: 'bikes', label: 'Bikes' },
-          ].map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => setCategoryFilter(cat.id)}
-              className={`px-3 py-1.5 rounded-lg transition-colors ${
-                categoryFilter === cat.id
-                  ? 'bg-stone-900 text-white dark:bg-amber-500 dark:text-stone-950'
-                  : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 hover:text-stone-900'
-              }`}
-            >
-              {cat.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Search & Status Filters */}
-        <div className="flex items-center gap-2 text-xs w-full sm:w-auto">
-          <div className="relative flex-1 sm:w-56">
-            <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+        {/* SEARCH INPUT */}
+        <div>
+          <span className="font-mono-code text-[10px] tracking-widest uppercase text-[#00ff88] block mb-2">
+            SEARCH ARCHIVE
+          </span>
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-white/40 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               placeholder="Search station, city, PNR..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg text-xs font-semibold text-stone-900 dark:text-white focus:outline-none"
+              className="w-full pl-9 pr-3 py-2 bg-[#16161a] border border-[#26262b] rounded-lg text-xs font-mono-code text-white placeholder-white/40 focus:outline-none focus:border-[#00ff88]"
             />
           </div>
+        </div>
 
+        {/* FILTER CONSOLE */}
+        <div>
+          <span className="font-mono-code text-[10px] tracking-widest uppercase text-[#00ff88] block mb-2">
+            FILTER CONSOLE
+          </span>
+          <div className="flex flex-col gap-2 font-mono-code text-xs">
+            <button
+              onClick={() => setCategoryFilter('all')}
+              className={`text-left px-3.5 py-2.5 rounded border transition-colors uppercase cursor-pointer ${
+                categoryFilter === 'all'
+                  ? 'bg-[#16161a] text-[#00ff88] border-[#00ff88] font-bold'
+                  : 'text-white/50 border-[#26262b] hover:text-white hover:border-white/30'
+              }`}
+            >
+              All Modes ({bookings.length})
+            </button>
+
+            <button
+              onClick={() => setCategoryFilter('cars')}
+              className={`text-left px-3.5 py-2.5 rounded border transition-colors uppercase cursor-pointer ${
+                categoryFilter === 'cars'
+                  ? 'bg-[#16161a] text-[#00ff88] border-[#00ff88] font-bold'
+                  : 'text-white/50 border-[#26262b] hover:text-white hover:border-white/30'
+              }`}
+            >
+              Cars Only
+            </button>
+
+            <button
+              onClick={() => setCategoryFilter('autos')}
+              className={`text-left px-3.5 py-2.5 rounded border transition-colors uppercase cursor-pointer ${
+                categoryFilter === 'autos'
+                  ? 'bg-[#16161a] text-[#00ff88] border-[#00ff88] font-bold'
+                  : 'text-white/50 border-[#26262b] hover:text-white hover:border-white/30'
+              }`}
+            >
+              Auto Rickshaws Only
+            </button>
+
+            <button
+              onClick={() => setCategoryFilter('bikes')}
+              className={`text-left px-3.5 py-2.5 rounded border transition-colors uppercase cursor-pointer ${
+                categoryFilter === 'bikes'
+                  ? 'bg-[#16161a] text-[#00ff88] border-[#00ff88] font-bold'
+                  : 'text-white/50 border-[#26262b] hover:text-white hover:border-white/30'
+              }`}
+            >
+              Bikes Only
+            </button>
+          </div>
+        </div>
+
+        {/* STATUS FILTER */}
+        <div>
+          <span className="font-mono-code text-[10px] tracking-widest uppercase text-white/50 block mb-2">
+            TRIP STATUS
+          </span>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-2.5 py-1.5 bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg font-bold text-stone-700 dark:text-stone-300 focus:outline-none"
+            className="w-full px-3 py-2 bg-[#16161a] border border-[#26262b] rounded text-xs font-mono-code text-white focus:outline-none focus:border-[#00ff88]"
           >
-            <option value="all">All Journeys</option>
-            <option value="confirmed">Upcoming Only</option>
-            <option value="completed">Completed Only</option>
-            <option value="cancelled">Cancelled</option>
+            <option value="all">ALL JOURNEYS</option>
+            <option value="confirmed">UPCOMING (OTP READY)</option>
+            <option value="in_progress">LIVE MAP IN PROGRESS</option>
+            <option value="completed">FINISHED ONLY</option>
+            <option value="cancelled">CANCELLED</option>
           </select>
         </div>
-      </div>
 
-      {/* TRAVEL LOGS TIMELINE CARDS */}
-      {filtered.length === 0 ? (
-        <div className="text-center py-16 bg-white dark:bg-stone-900 rounded-2xl border border-stone-200 dark:border-stone-800 p-8 space-y-3">
-          <MapPin className="w-8 h-8 text-stone-300 dark:text-stone-600 mx-auto" />
-          <h4 className="text-sm font-bold text-stone-900 dark:text-white">
-            No journeys match your filter
-          </h4>
-          <p className="text-xs text-stone-500 max-w-sm mx-auto">
-            Try resetting your search query or mode filter to view your travel archives.
+        {/* ADMIN CONTROL SHORTCUT */}
+        {onToggleAdmin && (
+          <div className="pt-2 border-t border-[#26262b]">
+            <button
+              onClick={onToggleAdmin}
+              className="w-full py-2 px-3 border border-[#26262b] hover:border-[#00ff88] text-white/60 hover:text-[#00ff88] rounded font-mono-code text-xs uppercase transition-colors flex items-center justify-center gap-2"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>ADMIN CONTROL</span>
+            </button>
+          </div>
+        )}
+      </aside>
+
+      {/* CONTENT: Audit Stream // Recent Logs */}
+      <main className="p-6 sm:p-8 overflow-y-auto bg-[radial-gradient(circle_at_50%_-20%,#1a2c24_0%,#0c0c0e_60%)]">
+        <div className="mb-6">
+          <span className="font-mono-code text-[10px] uppercase tracking-widest text-[#00ff88] block mb-1">
+            AUDIT STREAM // RECENT LOGS
+          </span>
+          <h1 className="text-3xl font-extrabold tracking-tight text-white">
+            Travelling History
+          </h1>
+          <p className="text-xs text-white/50 mt-1">
+            Official travel audit log: dates, departure timestamps, boarding station coordinates, and validated PNRs.
           </p>
         </div>
-      ) : (
-        <div className="space-y-4">
-          {filtered.map((b) => {
-            const isCompleted = b.bookingStatus === 'completed';
-            const isUpcoming = b.bookingStatus === 'confirmed';
-            const isCancelled = b.bookingStatus === 'cancelled';
 
-            return (
-              <div
-                key={b.id}
-                className="bg-white dark:bg-stone-900 rounded-2xl border border-stone-200 dark:border-stone-800 p-5 sm:p-6 shadow-xs hover:border-amber-400 dark:hover:border-amber-600 transition-all space-y-5"
-              >
-                {/* Row 1: Category, Service, Status Badge & Travel Date ("Travel kab hua") */}
-                <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-stone-100 dark:border-stone-800">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-stone-100 dark:bg-stone-800 flex items-center justify-center shrink-0">
+        {/* TICKET TABLE-STYLE LIST */}
+        {filtered.length === 0 ? (
+          <div className="text-center py-16 bg-[#16161a] border border-[#26262b] rounded-xl p-8 space-y-3 font-mono-code">
+            <span className="text-[#00ff88] text-lg block">NO_ENTRIES_FOUND</span>
+            <p className="text-xs text-white/50">
+              Zero records matching selected criteria. Reset filters to inspect all travel history logs.
+            </p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            {filtered.map((b) => {
+              const isUpcoming = b.bookingStatus === 'confirmed';
+              const isCompleted = b.bookingStatus === 'completed';
+
+              return (
+                <div
+                  key={b.id}
+                  className="bg-[#16161a] border border-[#26262b] hover:border-[#00ff88]/60 transition-colors rounded-xl overflow-hidden grid grid-cols-1 md:grid-cols-[70px_1fr_160px]"
+                >
+                  {/* Column 1: Mode Icon */}
+                  <div className="bg-[#111] p-4 flex md:flex-col items-center justify-center border-b md:border-b-0 md:border-r border-[#26262b]">
+                    <div className="w-10 h-10 rounded-lg bg-[#16161a] border border-[#26262b] flex items-center justify-center">
                       {getCategoryIcon(b.category)}
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-extrabold text-sm text-stone-900 dark:text-white">
-                          {b.serviceTitle}
+                  </div>
+
+                  {/* Column 2: Details */}
+                  <div className="p-5 flex flex-col justify-between gap-4">
+                    {/* Location Pair */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <span className="font-mono-code bg-white/5 px-2 py-0.5 rounded text-xs text-[#00ff88] font-bold">
+                          {b.originCode}
                         </span>
-                        <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 font-mono">
-                          {b.serviceNumber}
+                        <div className="flex flex-col">
+                          <span className="font-bold text-sm text-white">{b.origin}</span>
+                          <span className="text-[10px] text-white/50">{b.originAddress || 'Terminal / Platform'}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 text-white/40 font-mono-code text-xs px-2">
+                        <span>---&gt;</span>
+                      </div>
+
+                      <div className="flex items-center gap-3 sm:text-right">
+                        <div className="flex flex-col sm:items-end">
+                          <span className="font-bold text-sm text-white">{b.destination}</span>
+                          <span className="text-[10px] text-white/50">{b.destAddress || 'Station / City'}</span>
+                        </div>
+                        <span className="font-mono-code bg-white/5 px-2 py-0.5 rounded text-xs text-[#00ff88] font-bold">
+                          {b.destCode}
                         </span>
                       </div>
-                      <span className="text-[11px] text-stone-400">
-                        Operated by {b.providerName}
-                      </span>
+                    </div>
+
+                    {/* Metadata Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs pt-3 border-t border-[#26262b]">
+                      <div>
+                        <span className="text-white/40 block text-[10px] uppercase font-mono-code">Service</span>
+                        <span className="font-mono-code font-bold text-white/90 truncate block">
+                          {b.serviceNumber || b.serviceTitle}
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="text-white/40 block text-[10px] uppercase font-mono-code">
+                          Ride Ref
+                        </span>
+                        <span className="font-mono-code font-bold text-[#00ff88] truncate block">
+                          {b.pnrNumber || b.bookingRef}
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="text-white/40 block text-[10px] uppercase font-mono-code">Seating / Pax</span>
+                        <span className="font-mono-code text-white/90 truncate block">
+                          {b.seatNumbers?.length ? b.seatNumbers.join(', ') : 'Assigned Seat'}
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="text-white/40 block text-[10px] uppercase font-mono-code">Payment / Date</span>
+                        <span className="font-mono-code font-bold text-white block">
+                          ₹{b.fareBreakdown.totalAmount.toLocaleString('en-IN')}{' '}
+                          {b.paymentStatus === 'pay_after_ride' ? '(Pay Driver)' : ''} · {b.departureDate}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Travel Date Badge ("Kab hua") */}
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1.5 px-3 py-1 bg-stone-50 dark:bg-stone-800/80 rounded-lg text-xs font-bold text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700">
-                      <Calendar className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                      <span>{b.departureDate}</span>
-                      <span className="text-stone-400 font-normal">at {b.departureTime}</span>
-                    </div>
-
-                    {/* Status Badge */}
-                    <span
-                      className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${
-                        isUpcoming
-                          ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
-                          : isCompleted
-                          ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
-                          : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800'
-                      }`}
-                    >
-                      {b.bookingStatus}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Row 2: Route & Addresses ("Kidhar se kidhar gaye the") */}
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center bg-stone-50/70 dark:bg-stone-800/40 p-4 rounded-xl border border-stone-200/70 dark:border-stone-700/60">
-                  {/* Origin */}
-                  <div className="md:col-span-5 space-y-1">
-                    <span className="text-[9px] font-extrabold uppercase tracking-widest text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                      From (Starting Point)
-                    </span>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-lg font-black font-mono text-stone-900 dark:text-white">
-                        {b.originCode}
-                      </span>
-                      <span className="text-xs font-bold text-stone-800 dark:text-stone-200">
-                        {b.origin}
+                  {/* Column 3: Action Buttons */}
+                  <div className="p-4 bg-white/[0.02] border-t md:border-t-0 md:border-l border-[#26262b] flex flex-col justify-center gap-2 font-mono-code text-xs">
+                    {/* Status Dot & Badge */}
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="ticket-status-dot"></span>
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-[#00ff88]">
+                        {b.bookingStatus === 'in_progress' ? 'LIVE MAP' : b.bookingStatus}
                       </span>
                     </div>
-                    <div className="flex items-start gap-1 text-[11px] text-stone-500 dark:text-stone-400 leading-snug">
-                      <MapPin className="w-3.5 h-3.5 text-stone-400 shrink-0 mt-0.5" />
-                      <span>{b.originAddress || `${b.terminalOrPlatform || 'Main Station/Bay'}, ${b.origin}`}</span>
-                    </div>
-                  </div>
 
-                  {/* Arrow Indicator & Duration */}
-                  <div className="md:col-span-2 flex flex-col items-center justify-center py-1">
-                    <span className="text-[10px] font-mono text-stone-400 font-bold">
-                      {b.duration}
-                    </span>
-                    <div className="w-full flex items-center my-1">
-                      <div className="h-0.5 flex-1 bg-stone-300 dark:bg-stone-700" />
-                      <ArrowRight className="w-4 h-4 text-amber-600 dark:text-amber-400 mx-1 shrink-0" />
-                      <div className="h-0.5 flex-1 bg-stone-300 dark:bg-stone-700" />
-                    </div>
-                    <span className="text-[10px] text-stone-400">Direct Route</span>
-                  </div>
-
-                  {/* Destination */}
-                  <div className="md:col-span-5 space-y-1 md:text-right">
-                    <span className="text-[9px] font-extrabold uppercase tracking-widest text-rose-600 dark:text-rose-400 flex items-center md:justify-end gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                      To (Destination Point)
-                    </span>
-                    <div className="flex items-baseline md:justify-end gap-2">
-                      <span className="text-xs font-bold text-stone-800 dark:text-stone-200">
-                        {b.destination}
-                      </span>
-                      <span className="text-lg font-black font-mono text-stone-900 dark:text-white">
-                        {b.destCode}
-                      </span>
-                    </div>
-                    <div className="flex items-start md:justify-end gap-1 text-[11px] text-stone-500 dark:text-stone-400 leading-snug">
-                      <MapPin className="w-3.5 h-3.5 text-stone-400 shrink-0 mt-0.5" />
-                      <span>{b.destAddress || `${b.destination}, India`}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Row 3: Travelers, Seat Info, References & Quick Actions */}
-                <div className="flex flex-wrap items-center justify-between gap-4 pt-1">
-                  <div className="flex flex-wrap items-center gap-4 text-xs">
-                    <div>
-                      <span className="text-stone-400 text-[10px] font-bold block uppercase">
-                        Traveler(s)
-                      </span>
-                      <strong className="text-stone-800 dark:text-stone-200">
-                        {b.passengers.map((p) => p.fullName).join(', ')}
-                      </strong>
-                    </div>
-
-                    <div>
-                      <span className="text-stone-400 text-[10px] font-bold block uppercase">
-                        Seat / Berth Info
-                      </span>
-                      <strong className="font-mono text-amber-700 dark:text-amber-400">
-                        {b.seatNumbers.join(', ')}
-                      </strong>
-                    </div>
-
-                    <div>
-                      <span className="text-stone-400 text-[10px] font-bold block uppercase">
-                        {b.category === 'trains' || b.category === 'flights' ? 'Authorized PNR' : 'Ride Ref'}
-                      </span>
-                      <strong className="font-mono text-stone-700 dark:text-stone-300">
-                        {b.pnrNumber || b.providerRef}
-                      </strong>
-                    </div>
-
-                    <div>
-                      <span className="text-stone-400 text-[10px] font-bold block uppercase">
-                        Fare Paid
-                      </span>
-                      <strong className="font-mono text-stone-900 dark:text-white font-extrabold">
-                        ₹{b.fareBreakdown.totalAmount.toLocaleString('en-IN')}
-                      </strong>
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-2">
-                    {/* View Boarding Pass Button */}
-                    <button
-                      onClick={() => onOpenTicket(b)}
-                      className="flex items-center gap-1.5 px-3.5 py-2 bg-stone-900 hover:bg-stone-800 dark:bg-amber-500 dark:text-stone-950 dark:hover:bg-amber-400 text-white font-bold rounded-xl text-xs transition-colors shadow-xs"
-                    >
-                      <Ticket className="w-3.5 h-3.5" />
-                      <span>View Confirmed Ticket</span>
-                    </button>
-
-                    {/* Live Tracker Button */}
+                    {/* Live Map / OTP (btn-primary neon green #00ff88) */}
                     <button
                       onClick={() => onOpenLiveTracker(b)}
-                      className="flex items-center gap-1.5 px-3 py-2 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 font-bold rounded-xl text-xs transition-colors"
-                      title="Open Live Radar & GPS Tracker"
+                      className="w-full py-2 px-3 bg-[#00ff88] hover:bg-[#00e67a] text-black font-extrabold text-[11px] uppercase rounded transition-colors text-center cursor-pointer"
                     >
-                      <Radio className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                      <span>Live Tracker</span>
+                      {b.bookingStatus === 'confirmed'
+                        ? 'OTP & LIVE MAP'
+                        : b.bookingStatus === 'in_progress'
+                        ? 'TRACK & END RIDE'
+                        : 'ROUTE MAP'}
                     </button>
 
-                    {/* Gmail Dispatch Button */}
+                    {/* Download / View Ticket (btn-outline) */}
+                    <button
+                      onClick={() => onOpenTicket(b)}
+                      className="w-full py-2 px-3 bg-transparent border border-[#26262b] hover:border-white/50 text-white/70 hover:text-white font-bold text-[11px] uppercase rounded transition-colors text-center cursor-pointer"
+                    >
+                      DOWNLOAD
+                    </button>
+
+                    {/* Gmail Dispatch shortcut */}
                     <button
                       onClick={() => onOpenGmailConfirm(b)}
-                      className="p-2 text-stone-400 hover:text-amber-600 dark:hover:text-amber-400 bg-stone-50 dark:bg-stone-800 hover:bg-stone-100 rounded-xl transition-colors"
-                      title="Deliver official boarding pass to your Gmail inbox"
+                      className="w-full py-1.5 px-2 text-[10px] text-white/40 hover:text-[#00ff88] transition-colors text-center uppercase"
+                      title="Send ticket copy to Gmail"
                     >
-                      <Mail className="w-4 h-4" />
+                      SYNC_GMAIL
                     </button>
-
-                    {/* Book Again Shortcut */}
-                    {onBookAgain && (
-                      <button
-                        onClick={() => onBookAgain(b.category, b.origin, b.destination)}
-                        className="p-2 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 bg-stone-50 dark:bg-stone-800 hover:bg-stone-100 rounded-xl transition-colors"
-                        title="Book this exact route again"
-                      >
-                        <RotateCcw className="w-4 h-4" />
-                      </button>
-                    )}
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+              );
+            })}
+          </div>
+        )}
+      </main>
     </div>
   );
 };

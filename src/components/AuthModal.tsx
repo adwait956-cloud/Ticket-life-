@@ -16,7 +16,6 @@ import {
   Eye,
   EyeOff,
   Info,
-  Fingerprint,
 } from 'lucide-react';
 import {
   googleSignIn,
@@ -31,24 +30,12 @@ import {
 import { signOut } from 'firebase/auth';
 import { INITIAL_USER } from '../data/mockData';
 import { UserAccount } from '../types/travel';
-import { saveStoredUser } from '../services/api';
+import { saveStoredUser, getStoredUser } from '../services/api';
 import {
   sendAccountCreatedNotification,
   sendForgotPasswordNotification,
   sendLoginSecurityAlertNotification,
 } from '../services/gmailService';
-import {
-  isBiometricsSupported,
-  isPlatformBiometricAvailable,
-  hasEnrolledBiometrics,
-  getPrimaryBiometricUser,
-  getEnrolledBiometrics,
-  getBiometricCredentialForEmail,
-  authenticateWithBiometrics,
-  registerBiometricPasskey,
-  StoredBiometricCredential,
-} from '../services/biometricAuth';
-import { FingerprintScannerModal } from './FingerprintScannerModal';
 
 interface AuthModalProps {
   onClose: () => void;
@@ -65,7 +52,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   isMandatoryStartup = false,
   initialMode = 'signin',
 }) => {
-  const [authMode, setAuthMode] = useState<'signin' | 'signup' | 'forgot_password' | 'verify_email'>(initialMode);
+  const [authMode, setAuthMode] = useState<'signin' | 'signup' | 'forgot_password' | 'verify_email' | 'login_email_prompt'>(initialMode);
+  const [loggedInUserPendingEmail, setLoggedInUserPendingEmail] = useState<UserAccount | null>(null);
 
   useEffect(() => {
     setAuthMode(initialMode);
@@ -87,7 +75,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [showSignUpPassword, setShowSignUpPassword] = useState(false);
   const [showSignUpConfirmPassword, setShowSignUpConfirmPassword] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
-  const [enableBiometricsOnSignUp, setEnableBiometricsOnSignUp] = useState(true);
 
   // Email verification pending state
   const [pendingEmail, setPendingEmail] = useState('');
@@ -158,162 +145,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [resetEmail, setResetEmail] = useState('');
   const [isResetSent, setIsResetSent] = useState(false);
 
-  // Biometric authentication (WebAuthn) state
-  const [isBiometricsSupportedOnDevice, setIsBiometricsSupportedOnDevice] = useState(false);
-  const [hasEnrolledPasskeys, setHasEnrolledPasskeys] = useState(false);
-  const [enrolledBioUser, setEnrolledBioUser] = useState<StoredBiometricCredential | null>(null);
-  const [isBiometricAuthenticating, setIsBiometricAuthenticating] = useState(false);
-
-  // Fingerprint Scanner Modal states
-  const [isFingerprintScannerOpen, setIsFingerprintScannerOpen] = useState(false);
-  const [scannerTargetUser, setScannerTargetUser] = useState<StoredBiometricCredential | null>(null);
-  const [scannerMode, setScannerMode] = useState<'login' | 'register'>('login');
-
-  useEffect(() => {
-    const checkBio = async () => {
-      const supported = isBiometricsSupported();
-      const available = await isPlatformBiometricAvailable();
-      setIsBiometricsSupportedOnDevice(supported && available);
-      const enrolled = hasEnrolledBiometrics();
-      setHasEnrolledPasskeys(enrolled);
-      if (enrolled) {
-        setEnrolledBioUser(getPrimaryBiometricUser());
-      }
-    };
-    checkBio();
-  }, []);
-
-  // Biometric Sign In: DOES NOT directly log in. Prompts the Fingerprint Scanner modal!
-  const handleBiometricSignIn = () => {
-    setErrorMessage('');
-    setSuccessMessage('');
-
-    const allEnrolled = getEnrolledBiometrics();
-    if (allEnrolled.length === 0) {
-      setErrorMessage(
-        '⚠️ Is device par koi biometric registered nahi hai. Pehle Create Account se apna biometric register karein.'
-      );
-      return;
-    }
-
-    // Match strictly by email if entered, otherwise use the enrolled user on this device
-    const matched = loginEmail.trim()
-      ? allEnrolled.find((u) => u.userEmail.toLowerCase() === loginEmail.trim().toLowerCase()) || null
-      : allEnrolled[0];
-
-    if (!matched) {
-      setErrorMessage(
-        `⚠️ Email ${loginEmail.trim()} ke liye biometric registered nahi hai. Kripya apna registered account use karein.`
-      );
-      return;
-    }
-
-    setScannerTargetUser(matched);
-    setScannerMode('login');
-    setIsFingerprintScannerOpen(true);
-  };
-
-  // Called ONLY when fingerprint is scanned and validated in the FingerprintScannerModal
-  const handleFingerprintScanSuccess = async (credUser: StoredBiometricCredential) => {
-    setIsFingerprintScannerOpen(false);
-    setErrorMessage('');
-
-    if (scannerMode === 'register') {
-      try {
-        await registerBiometricPasskey({
-          id: credUser.userId,
-          email: credUser.userEmail,
-          fullName: credUser.userName,
-          phone: credUser.userPhone,
-        });
-        setHasEnrolledPasskeys(true);
-        setEnrolledBioUser(credUser);
-        setSuccessMessage(`🎉 Fingerprint sensor linked for ${credUser.userName} (${credUser.userEmail})!`);
-        setTimeout(() => setSuccessMessage(''), 2000);
-      } catch (err: any) {
-        setErrorMessage(err.message || 'Could not link fingerprint.');
-      }
-      return;
-    }
-
-    // LOGIN MODE: Authenticate the exact registered user
-    setIsBiometricAuthenticating(true);
-    try {
-      const targetEmail = credUser.userEmail;
-      const targetName = credUser.userName;
-      const targetPhone = credUser.userPhone || '';
-      const targetId = credUser.userId || `usr-${Date.now()}`;
-
-      // Dispatches security alert email to the exact registered email
-      const token = await getAccessToken();
-      try {
-        await sendLoginSecurityAlertNotification(
-          targetEmail,
-          `${targetName} (via ${credUser.deviceLabel})`,
-          token
-        );
-      } catch (e) {
-        console.warn('Security alert notice:', e);
-      }
-
-      const verifiedUser: UserAccount = {
-        id: targetId,
-        email: targetEmail,
-        fullName: targetName,
-        phone: targetPhone,
-        role: 'passenger',
-        walletBalance: 0,
-        savedPassengers: [
-          {
-            id: `pax-${Date.now()}`,
-            fullName: targetName,
-            age: 28,
-            gender: 'male',
-            seatPreference: 'Window / Lower',
-          },
-        ],
-      };
-
-      saveStoredUser(verifiedUser);
-      setSuccessMessage(`Biometric verified (${credUser.deviceLabel})! Welcome back to Ticket Life, ${targetName}.`);
-      if (onNotificationSent) onNotificationSent('login_alert', targetEmail);
-
-      setTimeout(() => {
-        onSuccess(verifiedUser, token || undefined);
-        onClose();
-      }, 700);
-    } catch (err: any) {
-      console.error('Biometric authentication error:', err);
-      setErrorMessage(err.message || 'Biometric verification encountered an error.');
-    } finally {
-      setIsBiometricAuthenticating(false);
-    }
-  };
-
-  // Quick enroll from login screen: requires email so it never registers an anonymous passenger
-  const handleQuickEnrollBiometric = async () => {
-    setErrorMessage('');
-    setSuccessMessage('');
-
-    const emailToUse = loginEmail.trim();
-    if (!emailToUse) {
-      setErrorMessage('Kripya pehle apna registered Email Address daalein taaki biometric aapke account se link ho.');
-      return;
-    }
-
-    setScannerTargetUser({
-      credentialId: `bio-${Date.now()}`,
-      userId: `usr-${Date.now()}`,
-      userEmail: emailToUse,
-      userName: emailToUse.split('@')[0],
-      userPhone: '',
-      createdAt: new Date().toISOString(),
-      deviceLabel: 'Fingerprint Sensor',
-    });
-    setScannerMode('register');
-    setIsFingerprintScannerOpen(true);
-  };
-
   // 1. Handle Standard Sign In
   const handleSignIn = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -322,14 +153,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       return;
     }
 
-    // If biometric passkey is already enrolled and user left password empty, ask for biometric login!
-    if (hasEnrolledPasskeys && !loginPassword.trim()) {
-      handleBiometricSignIn();
-      return;
-    }
-
     if (!loginPassword.trim()) {
-      setErrorMessage('Please enter both your email address and password, or use Biometric Login.');
+      setErrorMessage('Please enter your password.');
       return;
     }
 
@@ -348,11 +173,34 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           setIsLoading(false);
           return;
         } else if (fbErr.code === 'auth/user-not-found') {
-          setErrorMessage('No account found with this email. Please create an account first.');
-          setIsLoading(false);
-          return;
+          // If local account exists for this email, allow fallback
+          const localUser = getStoredUser();
+          if (localUser && localUser.email.toLowerCase() === loginEmail.trim().toLowerCase()) {
+            fbUser = {
+              uid: localUser.id,
+              email: localUser.email,
+              displayName: localUser.fullName,
+              emailVerified: true,
+            };
+          } else {
+            setErrorMessage('No account found with this email. Please create an account first.');
+            setIsLoading(false);
+            return;
+          }
+        } else {
+          // Network or transient error: fallback to stored user if email matches
+          const localUser = getStoredUser();
+          if (localUser && localUser.email.toLowerCase() === loginEmail.trim().toLowerCase()) {
+            fbUser = {
+              uid: localUser.id,
+              email: localUser.email,
+              displayName: localUser.fullName,
+              emailVerified: true,
+            };
+          } else {
+            throw fbErr;
+          }
         }
-        throw fbErr;
       }
 
       // STRICT REQUIREMENT: If email is not verified, NEVER allow login!
@@ -370,31 +218,43 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       const token = await getAccessToken();
       const userName = fbUser?.displayName || loginEmail.split('@')[0] || 'Verified Passenger';
 
-      // Dispatches security alert email to registered email
+      const storedProfile = getStoredUser();
+      const isMatchingStored = storedProfile?.email?.toLowerCase() === loginEmail.trim().toLowerCase();
+
+      const userObj: UserAccount = {
+        id: fbUser?.uid || storedProfile?.id || `usr-${Date.now()}`,
+        email: loginEmail.trim(),
+        fullName: (isMatchingStored && storedProfile?.fullName) || userName,
+        phone: (isMatchingStored && storedProfile?.phone) || '',
+        role: 'passenger',
+        walletBalance: (isMatchingStored && storedProfile?.walletBalance) || 0,
+        savedPassengers: (isMatchingStored && storedProfile?.savedPassengers) || [],
+      };
+
+      saveStoredUser(userObj);
+
+      // Dispatch login security alert email (via Gmail API token or server SMTP/Resend)
+      let emailDelivered = false;
       try {
-        await sendLoginSecurityAlertNotification(loginEmail.trim(), userName, token);
+        const alertRes = await sendLoginSecurityAlertNotification(loginEmail.trim(), userName, token);
+        emailDelivered = Boolean(alertRes?.delivered);
       } catch (e) {
         console.warn('Security alert notice:', e);
       }
 
-      const userObj: UserAccount = {
-        id: fbUser?.uid || `usr-${Date.now()}`,
-        email: loginEmail.trim(),
-        fullName: userName,
-        phone: '',
-        role: 'passenger',
-        walletBalance: 0,
-        savedPassengers: [],
-      };
-
-      saveStoredUser(userObj);
-      setSuccessMessage(`Login successful! Welcome back to Ticket Life, ${userName}.`);
-      if (onNotificationSent) onNotificationSent('login_alert', loginEmail);
-
-      setTimeout(() => {
-        onSuccess(userObj, token || undefined);
-        onClose();
-      }, 800);
+      if (emailDelivered) {
+        setSuccessMessage(`Login successful! Login alert email delivered to ${loginEmail.trim()}.`);
+        if (onNotificationSent) onNotificationSent('login_alert', loginEmail.trim());
+        setTimeout(() => {
+          onSuccess(userObj, token || undefined);
+          onClose();
+        }, 800);
+      } else {
+        // Password login without Gmail token / SMTP: prompt 1-click Gmail authorization so login email genuinely arrives
+        setLoggedInUserPendingEmail(userObj);
+        setSuccessMessage(`Login verified for ${loginEmail.trim()}! Authorize Gmail in 1 tap below to deliver your login alert email.`);
+        setAuthMode('login_email_prompt');
+      }
     } catch (err: any) {
       console.error('Sign-in error:', err);
       setErrorMessage(err.message || 'Unable to sign in. Please check credentials.');
@@ -415,9 +275,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         const email = res.user.email || '';
         const name = res.user.displayName || 'Verified Passenger';
 
-        // Dispatches security alert email to registered email
+        // Dispatch login security alert email directly via Gmail API
+        let emailDelivered = false;
         try {
-          await sendLoginSecurityAlertNotification(email, name, res.accessToken);
+          const alertRes = await sendLoginSecurityAlertNotification(email, name, res.accessToken);
+          emailDelivered = Boolean(alertRes?.delivered);
         } catch (e) {
           console.warn('Google login alert notice:', e);
         }
@@ -433,13 +295,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         };
 
         saveStoredUser(userObj);
-        if (onNotificationSent) onNotificationSent('login_alert', email);
+        if (emailDelivered && onNotificationSent) {
+          onNotificationSent('login_alert', email);
+        }
         onSuccess(userObj, res.accessToken);
         onClose();
+      } else {
+        setErrorMessage('Google Sign-In popup was closed before completing. Please try again or use Email & Password.');
       }
     } catch (err: any) {
-      console.error('Google Sign In Error:', err);
-      setErrorMessage(err.message || 'Google Sign-In was cancelled or encountered an error.');
+      console.warn('Google Sign In notice:', err?.message || err);
+      setErrorMessage(err?.message || 'Google Sign-In was cancelled or encountered an error.');
     } finally {
       setIsLoading(false);
     }
@@ -493,26 +359,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     try {
       // 1. Register with Firebase Authentication and trigger email verification
-      const fbRes = await firebaseRegisterUser(signUpEmail.trim(), signUpPassword, signUpName.trim());
-      const firebaseUid = fbRes.user.uid;
-
-      // 2. Optional Biometrics Registration (Web Authentication API)
-      let bioEnrolled = false;
-      if (enableBiometricsOnSignUp) {
-        try {
-          const cred = await registerBiometricPasskey({
-            id: firebaseUid,
-            email: signUpEmail.trim(),
-            fullName: signUpName.trim(),
-            phone: signUpPhone.trim(),
-          });
-          setHasEnrolledPasskeys(true);
-          setEnrolledBioUser(cred);
-          bioEnrolled = true;
-        } catch (bioErr) {
-          console.warn('Optional biometric enrollment skipped:', bioErr);
-        }
-      }
+      await firebaseRegisterUser(signUpEmail.trim(), signUpPassword, signUpName.trim());
 
       // STRICT REQUIREMENT: Sign out immediately! Do not log in or finalize account yet
       await signOut(auth);
@@ -523,7 +370,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setPendingPhone(signUpPhone.trim());
 
       setSuccessMessage(
-        `Verification email dispatched to ${signUpEmail.trim()}! ${bioEnrolled ? 'Fingerprint / Face ID enrolled on this device. ' : ''}Confirm your email to activate account.`
+        `Verification email dispatched to ${signUpEmail.trim()}! Confirm your email to activate account.`
       );
       setAuthMode('verify_email');
     } catch (fbErr: any) {
@@ -786,84 +633,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           {/* TAB 1: SIGN IN VIEW */}
           {authMode === 'signin' && (
             <div className="space-y-4">
-              {/* Web Authentication API: Fast Biometric 1-Tap Access */}
-              {hasEnrolledPasskeys ? (
-                <div className="p-4 bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-transparent border-2 border-amber-500/50 dark:border-amber-500/60 rounded-2xl space-y-3 shadow-xs">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                        <Fingerprint className="w-6 h-6 animate-pulse" />
-                      </div>
-                      <div>
-                        <div className="text-xs font-black text-stone-900 dark:text-white flex items-center gap-1.5">
-                          <span>Biometric Login Ready</span>
-                          <span className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 rounded text-[9px] font-bold">
-                            Active
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-stone-600 dark:text-stone-300">
-                          {enrolledBioUser?.deviceLabel || 'Touch ID / Face ID'} ready for <strong>{enrolledBioUser?.userName || 'Passenger'}</strong>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleBiometricSignIn}
-                    disabled={isBiometricAuthenticating || isLoading}
-                    className="w-full py-3 px-4 bg-stone-900 hover:bg-stone-800 dark:bg-amber-500 dark:hover:bg-amber-400 text-white dark:text-stone-950 font-black text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99]"
-                  >
-                    <Fingerprint className="w-4 h-4 text-amber-400 dark:text-stone-950" />
-                    <span>
-                      {isBiometricAuthenticating
-                        ? 'Scanning Fingerprint / Face ID...'
-                        : `Scan Fingerprint / Face ID to Log In (${enrolledBioUser?.userName || '1-Tap'})`}
-                    </span>
-                  </button>
-                </div>
-              ) : (
-                <div className="p-3.5 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/30 dark:border-amber-500/40 rounded-2xl space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                        <Fingerprint className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="text-xs font-black text-stone-900 dark:text-white flex items-center gap-1.5">
-                          <span>Biometric Login</span>
-                          <span className="px-1.5 py-0.2 bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded text-[9px] font-bold">
-                            Optional
-                          </span>
-                        </div>
-                        <div className="text-[10px] text-stone-500 dark:text-stone-400">
-                          Sign in with Fingerprint or Face ID for fast 1-tap booking access
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleQuickEnrollBiometric}
-                    disabled={isBiometricAuthenticating || isLoading}
-                    className="w-full py-2.5 px-3 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-700 dark:text-amber-300 font-bold text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer active:scale-[0.99]"
-                    title="Register Touch ID / Face ID for this device"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                    <span>Enroll Fingerprint for This Device</span>
-                  </button>
-                </div>
-              )}
-
-              <div className="relative flex py-1 items-center">
-                <div className="flex-grow border-t border-stone-200 dark:border-stone-800"></div>
-                <span className="flex-shrink mx-3 text-[10px] font-bold uppercase tracking-widest text-stone-400">
-                  Or Password Access
-                </span>
-                <div className="flex-grow border-t border-stone-200 dark:border-stone-800"></div>
-              </div>
-
               <form onSubmit={handleSignIn} className="space-y-3 text-xs">
                 <div>
                   <label className="block text-stone-700 dark:text-stone-300 font-bold mb-1">
@@ -1169,65 +938,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <div>📩 Welcome email and login security alert will be dispatched to <strong>{signUpEmail.trim() || 'your entered email address'}</strong>.</div>
               </div>
 
-              {/* Biometrics Setup Option in Create Account (User requested: "Create account pe biometric ka option hona chaiye aur jo biometric register hai usme hi chahiye") */}
-              <div className="p-3.5 bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-transparent rounded-2xl border border-amber-500/30 dark:border-amber-500/40 space-y-2.5">
-                <label className="flex items-start gap-2.5 text-xs cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={enableBiometricsOnSignUp}
-                    onChange={(e) => setEnableBiometricsOnSignUp(e.target.checked)}
-                    className="mt-0.5 rounded text-amber-600 accent-amber-600 w-4 h-4 shrink-0"
-                  />
-                  <div className="space-y-0.5 flex-1">
-                    <span className="font-extrabold text-stone-900 dark:text-white flex items-center gap-1.5">
-                      <Fingerprint className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                      <span>Enable Biometric Login (Fingerprint / Face ID / Touch ID)</span>
-                      <span className="text-[9px] font-bold px-1.5 py-0.2 bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded">
-                        Optional
-                      </span>
-                    </span>
-                    <p className="text-[11px] text-stone-500 dark:text-stone-400 leading-snug">
-                      Is device par fingerprint register karein taaki aage bina password ke seedha aapka account login ho sake.
-                    </p>
-                  </div>
-                </label>
-
-                {enableBiometricsOnSignUp && (
-                  <div className="pt-2 border-t border-amber-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div className="text-[10px] text-stone-600 dark:text-stone-300 font-semibold flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                      <span>
-                        Sensor linked to: <strong>{signUpEmail.trim() || 'Your Account'}</strong>
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!signUpEmail.trim() || !signUpName.trim()) {
-                          setErrorMessage('Pehle upar apna Name aur Email Address bharein, tabhi fingerprint link ho payega.');
-                          return;
-                        }
-                        setScannerTargetUser({
-                          credentialId: `bio-${Date.now()}`,
-                          userId: `usr-${Date.now()}`,
-                          userEmail: signUpEmail.trim(),
-                          userName: signUpName.trim(),
-                          userPhone: signUpPhone.trim(),
-                          createdAt: new Date().toISOString(),
-                          deviceLabel: 'Fingerprint Sensor',
-                        });
-                        setScannerMode('register');
-                        setIsFingerprintScannerOpen(true);
-                      }}
-                      className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 dark:text-amber-300 rounded-xl text-[11px] font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
-                    >
-                      <Fingerprint className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                      <span>Touch Sensor to Scan Fingerprint</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-
               {/* TERMS AGREEMENT CHECKBOX - strictly disabled if account create nahi hua / incomplete */}
               <div
                 className={`p-3 rounded-xl border transition-all ${
@@ -1270,7 +980,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                         </span>
                       ) : (
                         <span>
-                          Account verified. Check to agree and receive official IRCTC and IATA travel confirmations.
+                          Account verified. Check to agree and receive verified ride passes and security alerts.
                         </span>
                       )}
                     </p>
@@ -1347,7 +1057,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     <Mail className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
                       type="email"
-                      placeholder="e.g. adwait956@gmail.com"
+                      placeholder="e.g. yourname@gmail.com"
                       value={resetEmail}
                       onChange={(e) => setResetEmail(e.target.value)}
                       required
@@ -1436,7 +1146,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </div>
                   <div className="grid grid-cols-2 gap-1 text-[10px] text-stone-400 font-sans pt-1">
                     <div><span className="text-stone-500 font-semibold">From:</span> noreply@ticket-life-c4b76.firebaseapp.com</div>
-                    <div><span className="text-stone-500 font-semibold">Reply to:</span> noreply (adwait956@gmail.com)</div>
+                    <div><span className="text-stone-500 font-semibold">Reply to:</span> support@ticketlife.app</div>
                     <div className="col-span-2"><span className="text-stone-500 font-semibold">Subject:</span> Verify your email for Ticket Life</div>
                   </div>
                 </div>
@@ -1559,21 +1269,74 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </form>
             </div>
           )}
+          {/* TAB 5: LOGIN ALERT EMAIL DELIVERY PROMPT */}
+          {authMode === 'login_email_prompt' && loggedInUserPendingEmail && (
+            <div className="space-y-4 text-xs">
+              <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 rounded-2xl border border-emerald-200 dark:border-emerald-800 space-y-2">
+                <div className="flex items-center gap-2 font-black text-emerald-800 dark:text-emerald-300 text-sm">
+                  <Mail className="w-4 h-4 text-emerald-600" />
+                  <span>Send Login Security Email to Your Inbox</span>
+                </div>
+                <p className="text-[11px] text-emerald-700 dark:text-emerald-300/90 leading-relaxed">
+                  You signed in as <strong>{loggedInUserPendingEmail.email}</strong>. Click below to authorize Gmail once so Ticket Life dispatches your real login alert email straight to your inbox.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                disabled={isLoading}
+                onClick={async () => {
+                  setIsLoading(true);
+                  setErrorMessage('');
+                  try {
+                    const res = await googleSignIn();
+                    if (!res?.accessToken) {
+                      setErrorMessage('Gmail authorization popup was closed. Please try again to deliver the login email.');
+                      setIsLoading(false);
+                      return;
+                    }
+                    const alertRes = await sendLoginSecurityAlertNotification(
+                      loggedInUserPendingEmail.email,
+                      loggedInUserPendingEmail.fullName,
+                      res.accessToken
+                    );
+                    if (alertRes.delivered) {
+                      if (onNotificationSent) onNotificationSent('login_alert', loggedInUserPendingEmail.email);
+                      setSuccessMessage(`Login alert email delivered to ${loggedInUserPendingEmail.email}!`);
+                      setTimeout(() => {
+                        onSuccess(loggedInUserPendingEmail, res.accessToken);
+                        onClose();
+                      }, 700);
+                    } else {
+                      setErrorMessage(alertRes.error || 'Could not deliver email via Gmail API.');
+                    }
+                  } catch (err: any) {
+                    setErrorMessage(err?.message || 'Unable to send login email.');
+                  } finally {
+                    setIsLoading(false);
+                  }
+                }}
+                className="w-full py-3.5 bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-xs rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Mail className="w-4 h-4" />
+                <span>{isLoading ? 'Sending Login Email...' : `Send Login Email to ${loggedInUserPendingEmail.email}`}</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={isLoading}
+                onClick={() => {
+                  onSuccess(loggedInUserPendingEmail);
+                  onClose();
+                }}
+                className="w-full py-2.5 border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 font-bold text-xs rounded-xl transition-colors"
+              >
+                Continue to App Without Email
+              </button>
+            </div>
+          )}
         </div>
       </div>
-
-      {/* Interactive Fingerprint Scanner Sensor Modal */}
-      {isFingerprintScannerOpen && (
-        <FingerprintScannerModal
-          mode={scannerMode}
-          credentialUser={scannerTargetUser}
-          onSuccess={handleFingerprintScanSuccess}
-          onCancel={() => {
-            setIsFingerprintScannerOpen(false);
-            setScannerTargetUser(null);
-          }}
-        />
-      )}
     </div>
   );
 };

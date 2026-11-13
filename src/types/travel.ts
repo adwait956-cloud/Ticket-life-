@@ -1,4 +1,4 @@
-export type TransportCategory = 'cars' | 'autos' | 'bikes' | 'trains' | 'flights' | 'buses';
+export type TransportCategory = 'cars' | 'autos' | 'bikes';
 
 export interface LocationItem {
   id: string;
@@ -6,15 +6,22 @@ export interface LocationItem {
   code: string;
   city: string;
   state?: string;
-  type: 'airport' | 'railway' | 'bus_station' | 'city_point';
+  type: 'city_point';
+}
+
+export interface LatLngPoint {
+  lat: number;
+  lng: number;
 }
 
 export interface SearchFilterState {
   category: TransportCategory;
   origin: string;
   originCode: string;
+  originCoords?: LatLngPoint;
   destination: string;
   destCode: string;
+  destCoords?: LatLngPoint;
   departDate: string;
   returnDate?: string;
   isRoundTrip: boolean;
@@ -38,10 +45,12 @@ export interface TransportOption {
   origin: string;
   originCode: string;
   originAddress?: string;
+  originCoords?: LatLngPoint;
   originTerminalOrPlatform?: string;
   destination: string;
   destCode: string;
   destAddress?: string;
+  destCoords?: LatLngPoint;
   destTerminalOrPlatform?: string;
   departureTime: string;
   arrivalTime: string;
@@ -74,6 +83,9 @@ export interface TransportOption {
     lastUpdated: string;
     driverDetails?: {
       name: string;
+      driverName?: string;
+      driverPhotoUrl?: string;
+      vehiclePlateNumber?: string;
       phone: string;
       rating: number;
       vehicleNumber: string;
@@ -112,9 +124,11 @@ export interface BookingRecord {
   origin: string;
   originCode: string;
   originAddress?: string;
+  originCoords?: LatLngPoint;
   destination: string;
   destCode: string;
   destAddress?: string;
+  destCoords?: LatLngPoint;
   departureDate: string;
   departureTime: string;
   arrivalDate: string;
@@ -123,10 +137,14 @@ export interface BookingRecord {
   passengers: PassengerInfo[];
   seatNumbers: string[];
   fareBreakdown: FareBreakdown;
-  paymentMethod: 'UPI' | 'Card' | 'NetBanking' | 'Wallet';
+  paymentMethod: 'UPI' | 'Card' | 'NetBanking' | 'Wallet' | 'PayAfterRide';
   paymentTxnId: string;
-  paymentStatus: 'paid' | 'refunded' | 'partially_refunded';
+  paymentStatus: 'paid' | 'pay_after_ride' | 'refunded' | 'partially_refunded';
   bookingStatus: 'confirmed' | 'completed' | 'cancelled' | 'in_progress';
+  startOtpVerified?: boolean;
+  rideStartedAt?: string;
+  rideCompletedAt?: string;
+  collectedByDriverMethod?: 'Cash' | 'UPI';
   providerName: string;
   qrCodeToken: string;
   terminalOrPlatform?: string;
@@ -141,6 +159,9 @@ export interface BookingRecord {
   };
   driverInfo?: {
     name: string;
+    driverName?: string;
+    driverPhotoUrl?: string;
+    vehiclePlateNumber?: string;
     phone: string;
     vehicleNumber: string;
     rating: number;
@@ -148,6 +169,56 @@ export interface BookingRecord {
   };
   googleCalendarEventId?: string;
   calendarSyncedAt?: string;
+  payoutStatus?: 'pending' | 'settled';
+  payoutRef?: string;
+  payoutSettledAt?: string;
+  payoutMethod?: 'UPI' | 'IMPS_Bank' | 'Cash';
+}
+
+export interface DriverTripPayoutItem {
+  bookingId: string;
+  bookingRef: string;
+  serviceTitle: string;
+  category: TransportCategory;
+  origin: string;
+  destination: string;
+  completedAt: string;
+  fareAmount: number;
+  driverCut: number;
+  platformCut: number;
+  paymentMethod: string;
+  collectedBy: 'Platform' | 'Driver';
+  payoutStatus: 'pending' | 'settled';
+  payoutRef?: string;
+  payoutSettledAt?: string;
+}
+
+export interface DriverPayoutSummary {
+  driverId: string;
+  driverName: string;
+  driverPhotoUrl?: string;
+  driverPhone: string;
+  vehiclePlateNumber: string;
+  vehicleType: string;
+  category: TransportCategory;
+  rating: number;
+  ratingCount?: number;
+  completionRate?: number;
+  acceptanceRate?: number;
+  fiveStarPercent?: number;
+  onTimeRate?: number;
+  tier?: 'Platinum' | 'Gold' | 'Silver';
+  badge?: string;
+  upiId: string;
+  bankAccount: string;
+  bankIfsc: string;
+  completedRidesCount: number;
+  totalGrossFares: number;
+  platformFeeTotal: number;
+  totalEarnings: number;
+  settledAmount: number;
+  pendingAmount: number;
+  rides: DriverTripPayoutItem[];
 }
 
 export interface UserAccount {

@@ -1,9 +1,6 @@
 import React, { useState } from 'react';
 import {
   Sparkles,
-  Plane,
-  Train,
-  Bus,
   Car,
   Compass,
   Bike,
@@ -36,20 +33,15 @@ export const TravelDigestCard: React.FC<TravelDigestCardProps> = ({
   onOpenLiveTracker,
   onOpenGmailNotificationModal,
 }) => {
-  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<'all' | 'flights' | 'trains' | 'mobility'>('all');
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<'all' | 'cars' | 'autos' | 'bikes'>('all');
 
   const filteredItems = digestItems.filter((item) => {
     if (selectedCategoryFilter === 'all') return true;
-    if (selectedCategoryFilter === 'flights') return item.category === 'flights';
-    if (selectedCategoryFilter === 'trains') return item.category === 'trains';
-    return item.category === 'cars' || item.category === 'buses' || item.category === 'autos' || item.category === 'bikes';
+    return item.category === selectedCategoryFilter;
   });
 
   const getCategoryIcon = (category: string) => {
     switch (category) {
-      case 'flights': return Plane;
-      case 'trains': return Train;
-      case 'buses': return Bus;
       case 'cars': return Car;
       case 'autos': return Compass;
       default: return Bike;
@@ -105,37 +97,37 @@ export const TravelDigestCard: React.FC<TravelDigestCardProps> = ({
               : 'text-stone-500 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800'
           }`}
         >
-          All Departures ({digestItems.length})
+          All Modes ({digestItems.length})
         </button>
         <button
-          onClick={() => setSelectedCategoryFilter('trains')}
+          onClick={() => setSelectedCategoryFilter('cars')}
           className={`px-3.5 py-1.5 rounded-lg font-bold uppercase tracking-wider text-[11px] transition-colors whitespace-nowrap ${
-            selectedCategoryFilter === 'trains'
+            selectedCategoryFilter === 'cars'
               ? 'bg-stone-900 dark:bg-amber-500 text-white dark:text-stone-950 shadow-xs'
               : 'text-stone-500 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800'
           }`}
         >
-          Trains ({digestItems.filter((i) => i.category === 'trains').length})
+          Cars ({digestItems.filter((i) => i.category === 'cars').length})
         </button>
         <button
-          onClick={() => setSelectedCategoryFilter('flights')}
+          onClick={() => setSelectedCategoryFilter('autos')}
           className={`px-3.5 py-1.5 rounded-lg font-bold uppercase tracking-wider text-[11px] transition-colors whitespace-nowrap ${
-            selectedCategoryFilter === 'flights'
+            selectedCategoryFilter === 'autos'
               ? 'bg-stone-900 dark:bg-amber-500 text-white dark:text-stone-950 shadow-xs'
               : 'text-stone-500 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800'
           }`}
         >
-          Flights ({digestItems.filter((i) => i.category === 'flights').length})
+          Auto Rickshaws ({digestItems.filter((i) => i.category === 'autos').length})
         </button>
         <button
-          onClick={() => setSelectedCategoryFilter('mobility')}
+          onClick={() => setSelectedCategoryFilter('bikes')}
           className={`px-3.5 py-1.5 rounded-lg font-bold uppercase tracking-wider text-[11px] transition-colors whitespace-nowrap ${
-            selectedCategoryFilter === 'mobility'
+            selectedCategoryFilter === 'bikes'
               ? 'bg-stone-900 dark:bg-amber-500 text-white dark:text-stone-950 shadow-xs'
               : 'text-stone-500 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800'
           }`}
         >
-          Cabs & Buses ({digestItems.filter((i) => i.category !== 'trains' && i.category !== 'flights').length})
+          Bikes ({digestItems.filter((i) => i.category === 'bikes').length})
         </button>
       </div>
 
@@ -219,7 +211,7 @@ export const TravelDigestCard: React.FC<TravelDigestCardProps> = ({
 
                 {/* Metadata */}
                 <div className="mt-3 flex items-center justify-between text-[11px] text-stone-500">
-                  <span>Authorized PNR / Ref:</span>
+                  <span>Ride Ref / OTP:</span>
                   <span className="font-mono font-bold text-amber-700 dark:text-amber-300">
                     {item.pnrOrRef}
                   </span>

@@ -16,7 +16,8 @@ import {
   Clock,
   Printer,
   Mail,
-  Fingerprint,
+  Banknote,
+  Navigation,
 } from 'lucide-react';
 import {
   BookingRecord,
@@ -28,12 +29,10 @@ import {
 import { createConfirmedBooking } from '../services/api';
 import { POPULAR_OFFERS } from '../data/mockData';
 import {
-  isBiometricsSupported,
-  hasEnrolledBiometrics,
-  getPrimaryBiometricUser,
-  StoredBiometricCredential,
-} from '../services/biometricAuth';
-import { FingerprintScannerModal } from './FingerprintScannerModal';
+  fetchPaymentGatewayStatus,
+  GatewayConfigError,
+  processRealGatewayPayment,
+} from '../services/paymentService';
 
 interface BookingCheckoutModalProps {
   option: TransportOption;
@@ -43,6 +42,7 @@ interface BookingCheckoutModalProps {
   onClose: () => void;
   onBookingSuccess: (booking: BookingRecord) => void;
   onOpenGmailConfirm: (booking: BookingRecord) => void;
+  onOpenLiveTracker?: (booking: BookingRecord) => void;
 }
 
 export const BookingCheckoutModal: React.FC<BookingCheckoutModalProps> = ({
@@ -53,6 +53,7 @@ export const BookingCheckoutModal: React.FC<BookingCheckoutModalProps> = ({
   onClose,
   onBookingSuccess,
   onOpenGmailConfirm,
+  onOpenLiveTracker,
 }) => {
   // Step: 1 = Passengers & Addons, 2 = Payment Gateway, 3 = Confirmation
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
@@ -90,8 +91,8 @@ export const BookingCheckoutModal: React.FC<BookingCheckoutModalProps> = ({
   const [appliedPromo, setAppliedPromo] = useState<{ code: string; discount: number } | null>(null);
   const [promoError, setPromoError] = useState('');
 
-  // Payment method
-  const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'Card' | 'NetBanking' | 'Wallet'>('UPI');
+  // Payment method (Defaults to Uber/Ola style: Pay Driver After Ride completes)
+  const [paymentMethod, setPaymentMethod] = useState<'PayAfterRide' | 'UPI' | 'Card' | 'NetBanking' | 'Wallet'>('PayAfterRide');
   const [selectedUpiApp, setSelectedUpiApp] = useState<'gpay' | 'phonepe' | 'paytm' | 'qr'>('gpay');
   const [upiIdInput, setUpiIdInput] = useState('');
   
@@ -103,30 +104,10 @@ export const BookingCheckoutModal: React.FC<BookingCheckoutModalProps> = ({
 
   // Processing state
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-  const [isBiometricPaying, setIsBiometricPaying] = useState(false);
-  const [biometricError, setBiometricError] = useState('');
+  const [paymentError, setPaymentError] = useState('');
+  const [gatewayStatusText, setGatewayStatusText] = useState<string | null>(null);
   const [confirmedBooking, setConfirmedBooking] = useState<BookingRecord | null>(null);
   const [checkoutAuthError, setCheckoutAuthError] = useState('');
-
-  // Fingerprint Scanner modal state for payment
-  const [isFingerprintScannerOpen, setIsFingerprintScannerOpen] = useState(false);
-  const [scannerUser, setScannerUser] = useState<StoredBiometricCredential | null>(null);
-
-  const handleBiometricPayment = () => {
-    setBiometricError('');
-    const primary = getPrimaryBiometricUser();
-    if (!primary) {
-      setBiometricError('No biometric passkey registered on this device. Please register in your Account or Create Account.');
-      return;
-    }
-    setScannerUser(primary);
-    setIsFingerprintScannerOpen(true);
-  };
-
-  const handleFingerprintPaySuccess = () => {
-    setIsFingerprintScannerOpen(false);
-    handleCompletePayment();
-  };
 
   // Fare calculations
   const count = passengers.length;
@@ -149,7 +130,7 @@ export const BookingCheckoutModal: React.FC<BookingCheckoutModalProps> = ({
     const code = promoCodeInput.trim().toUpperCase();
     const found = POPULAR_OFFERS.find((o) => o.code === code);
     if (!found) {
-      setPromoError('Invalid promo code. Try FIRSTTRIP or TRAINPASS.');
+      setPromoError('Invalid promo code. Try FIRSTTRIP or RIDEFREE.');
       return;
     }
     if (baseTotal < (found.minBooking || 0)) {
@@ -190,24 +171,97 @@ export const BookingCheckoutModal: React.FC<BookingCheckoutModalProps> = ({
     );
   };
 
-  // Execute payment and create confirmed booking
+  // Execute REAL payment and create confirmed booking (no fake payment simulation)
   const handleCompletePayment = async () => {
+    setPaymentError('');
     setIsProcessingPayment(true);
 
-    // Simulate server-side cryptographic payment verification
-    setTimeout(() => {
-      const txnId = `pay_rzp_mock_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
+    try {
+      const formattedPassengers = passengers.map((p) => ({
+        ...p,
+        fullName: p.fullName.trim() || 'Passenger',
+      }));
 
-      // Finalize booking with authorized provider
+      // Uber / Ola Style: Pay Driver Directly After Ride Completes (Cash or Direct UPI at Drop-off)
+      if (paymentMethod === 'PayAfterRide') {
+        const txnId = `PAY_AFTER_RIDE_${Date.now().toString().slice(-6)}`;
+        const booking = createConfirmedBooking({
+          option,
+          passengers: formattedPassengers,
+          fareBreakdown,
+          paymentMethod: 'PayAfterRide',
+          paymentTxnId: txnId,
+          travelDate,
+        });
+        setConfirmedBooking(booking);
+        setIsProcessingPayment(false);
+        setCurrentStep(3);
+        onBookingSuccess(booking);
+        return;
+      }
+
+      // Wallet balance path (real balance already stored on account)
+      if (paymentMethod === 'Wallet') {
+        const currentBal = user?.walletBalance ?? 0;
+        if (currentBal < grandTotal) {
+          setPaymentError(
+            `Insufficient Wallet balance (₹${currentBal.toLocaleString('en-IN')}). Please top-up wallet or pay via Cashfree / PhonePe PG.`
+          );
+          setIsProcessingPayment(false);
+          return;
+        }
+        const txnId = `wal_deb_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
+        const booking = createConfirmedBooking({
+          option,
+          passengers: formattedPassengers,
+          fareBreakdown,
+          paymentMethod: 'Wallet',
+          paymentTxnId: txnId,
+          travelDate,
+        });
+        setConfirmedBooking(booking);
+        setIsProcessingPayment(false);
+        setCurrentStep(3);
+        onBookingSuccess(booking);
+        return;
+      }
+
+      // Real Gateway Payment (Cashfree / PhonePe PG via server.ts)
+      const draftRef = `TL-${option.category.toUpperCase()}-${Date.now().toString().slice(-6)}`;
+      const gatewayPref = selectedUpiApp === 'phonepe' ? 'phonepe' : 'auto';
+      const pgRes = await processRealGatewayPayment({
+        amount: grandTotal,
+        customerName: formattedPassengers[0]?.fullName || user?.fullName || 'Ticket Life Passenger',
+        customerEmail: contactEmail.trim() || user?.email || 'passenger@ticketlife.app',
+        customerPhone: contactPhone.trim() || user?.phone || '9999999999',
+        bookingRef: draftRef,
+        gatewayPreference: gatewayPref,
+        pendingContext: {
+          type: 'booking',
+          option,
+          passengers: formattedPassengers,
+          fareBreakdown,
+          paymentMethod,
+          travelDate,
+        },
+      });
+
+      if (pgRes.redirected) {
+        return;
+      }
+
+      if (!pgRes.paid) {
+        setPaymentError('Payment was not confirmed by the gateway.');
+        setIsProcessingPayment(false);
+        return;
+      }
+
       const booking = createConfirmedBooking({
         option,
-        passengers: passengers.map((p) => ({
-          ...p,
-          fullName: p.fullName.trim() || 'Passenger',
-        })),
+        passengers: formattedPassengers,
         fareBreakdown,
         paymentMethod,
-        paymentTxnId: txnId,
+        paymentTxnId: pgRes.txnId,
         travelDate,
       });
 
@@ -215,7 +269,14 @@ export const BookingCheckoutModal: React.FC<BookingCheckoutModalProps> = ({
       setIsProcessingPayment(false);
       setCurrentStep(3);
       onBookingSuccess(booking);
-    }, 1800);
+    } catch (err: any) {
+      if (err instanceof GatewayConfigError) {
+        setPaymentError(err.message);
+      } else {
+        setPaymentError(err?.message || 'Real payment could not be completed.');
+      }
+      setIsProcessingPayment(false);
+    }
   };
 
   return (
@@ -482,6 +543,16 @@ export const BookingCheckoutModal: React.FC<BookingCheckoutModalProps> = ({
                       setCheckoutAuthError('Account create nahi hua hai. Ticket book karne ke liye kripya pehle Account create karein.');
                       return;
                     }
+                    fetchPaymentGatewayStatus().then((st) => {
+                      if (st.cashfreeConfigured) {
+                        setGatewayStatusText(`Cashfree PG (${st.cashfreeEnv.toUpperCase()}) Connected`);
+                      } else if (st.phonepeConfigured) {
+                        setGatewayStatusText(`PhonePe PG (${st.phonepeEnv.toUpperCase()}) Connected`);
+                      } else {
+                        setGatewayStatusText('Gateway KYC / Merchant API Keys Pending in Environment Secrets');
+                      }
+                    });
+                    setPaymentError('');
                     setCurrentStep(2);
                   }}
                   className="px-6 py-2.5 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-lg transition-colors text-xs flex items-center gap-2 shadow-sm shadow-sky-600/20"
@@ -496,19 +567,36 @@ export const BookingCheckoutModal: React.FC<BookingCheckoutModalProps> = ({
           {/* STEP 2: Secure Payment Gateway */}
           {currentStep === 2 && (
             <div className="space-y-6">
-              {/* Payment Security Badge */}
-              <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2.5">
-                <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
-                <div>
-                  <span className="font-bold">PCI-DSS 256-Bit Encrypted Gateway</span>
-                  <span className="block text-[11px] text-emerald-700/80 dark:text-emerald-400">
-                    Never storing your CVV or UPI PIN. Verified server-side payment callback.
-                  </span>
+              {/* Payment Security Badge - Cashfree & PhonePe Direct Gateway */}
+              <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-300 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold">Cashfree & PhonePe Payment Gateway</span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-600 text-white font-extrabold uppercase">Direct UPI</span>
+                    </div>
+                    <span className="block text-[11px] text-emerald-700/80 dark:text-emerald-400">
+                      PCI-DSS 256-Bit Secure Checkout · Supports PhonePe, GPay, Paytm, Cards & NetBanking
+                    </span>
+                  </div>
                 </div>
               </div>
 
               {/* Payment Method Selector */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('PayAfterRide')}
+                  className={`p-3 rounded-lg border text-xs font-bold flex flex-col items-center gap-1.5 transition-colors ${
+                    paymentMethod === 'PayAfterRide'
+                      ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-600 text-emerald-700 dark:text-emerald-300'
+                      : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50'
+                  }`}
+                >
+                  <Banknote className="w-5 h-5" />
+                  <span>Pay After Ride</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('UPI')}
@@ -555,9 +643,22 @@ export const BookingCheckoutModal: React.FC<BookingCheckoutModalProps> = ({
                   }`}
                 >
                   <Sparkles className="w-5 h-5" />
-                  <span>TL Wallet (₹2,450)</span>
+                  <span>TL Wallet (₹{(user?.walletBalance ?? 0).toLocaleString('en-IN')})</span>
                 </button>
               </div>
+
+              {/* Pay After Ride Details */}
+              {paymentMethod === 'PayAfterRide' && (
+                <div className="p-4 bg-emerald-50/70 dark:bg-emerald-950/30 rounded-xl border border-emerald-200 dark:border-emerald-800 space-y-2 text-xs">
+                  <div className="font-extrabold text-emerald-900 dark:text-emerald-200 flex items-center gap-2">
+                    <Banknote className="w-4 h-4 text-emerald-600" />
+                    <span>Uber &amp; Ola Style · Pay Driver Directly After Ride Completes</span>
+                  </div>
+                  <p className="text-emerald-800/90 dark:text-emerald-300/90 leading-relaxed">
+                    Confirm your ride right now without paying upfront. Enter the 4-digit Start OTP when the captain arrives to unlock the Live Route Map, and pay ₹{grandTotal.toLocaleString('en-IN')} directly to the driver (Cash or Direct UPI) after reaching your drop location.
+                  </p>
+                </div>
+              )}
 
               {/* UPI Form */}
               {paymentMethod === 'UPI' && (
@@ -711,7 +812,7 @@ export const BookingCheckoutModal: React.FC<BookingCheckoutModalProps> = ({
                 <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
                   <div className="flex justify-between items-center mb-2">
                     <span className="font-semibold text-slate-600 dark:text-slate-400">Available Ticket Life Wallet Balance:</span>
-                    <span className="font-extrabold text-slate-900 dark:text-white font-mono">₹2,450.00</span>
+                    <span className="font-extrabold text-slate-900 dark:text-white font-mono">₹{(user?.walletBalance ?? 0).toLocaleString('en-IN')}.00</span>
                   </div>
                   <div className="text-[11px] text-emerald-600 font-semibold">
                     Instant 1-click debit without OTP requirement.
@@ -719,11 +820,21 @@ export const BookingCheckoutModal: React.FC<BookingCheckoutModalProps> = ({
                 </div>
               )}
 
-              {/* Biometric error notice if scan was cancelled */}
-              {biometricError && (
-                <div className="p-3 bg-rose-50 dark:bg-rose-950/40 rounded-xl border border-rose-200 dark:border-rose-800 text-xs text-rose-700 dark:text-rose-300 flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                  <span>{biometricError}</span>
+
+              {gatewayStatusText && (
+                <div className="px-3 py-2 bg-slate-100 dark:bg-slate-800/70 rounded-lg text-[11px] font-semibold text-slate-600 dark:text-slate-300 flex items-center justify-between">
+                  <span>Live Gateway Status:</span>
+                  <span className="font-mono font-bold text-slate-900 dark:text-white">{gatewayStatusText}</span>
+                </div>
+              )}
+
+              {paymentError && (
+                <div className="p-3.5 bg-rose-50 dark:bg-rose-950/40 rounded-xl border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs font-semibold flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <div className="font-black">Real Payment Verification Required</div>
+                    <p className="leading-relaxed">{paymentError}</p>
+                  </div>
                 </div>
               )}
 
@@ -740,20 +851,7 @@ export const BookingCheckoutModal: React.FC<BookingCheckoutModalProps> = ({
                 <div className="flex items-center gap-2 w-full sm:w-auto">
                   <button
                     type="button"
-                    disabled={isProcessingPayment || isBiometricPaying}
-                    onClick={handleBiometricPayment}
-                    className="flex-1 sm:flex-none px-4 py-2.5 bg-amber-500 hover:bg-amber-400 disabled:bg-stone-300 text-stone-950 font-black rounded-lg transition-all text-xs flex items-center justify-center gap-1.5 shadow-sm active:scale-[0.99] cursor-pointer"
-                    title="Authorize payment with Touch ID / Face ID"
-                  >
-                    <Fingerprint className="w-4 h-4" />
-                    <span>
-                      {isBiometricPaying ? 'Scanning Biometrics...' : '1-Tap Biometric Pay'}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={isProcessingPayment || isBiometricPaying}
+                    disabled={isProcessingPayment}
                     onClick={handleCompletePayment}
                     className="flex-1 sm:flex-none px-6 py-2.5 bg-sky-600 hover:bg-sky-500 disabled:bg-slate-400 text-white font-bold rounded-lg transition-colors text-xs flex items-center justify-center gap-2 shadow-sm shadow-sky-600/20"
                   >
@@ -765,7 +863,11 @@ export const BookingCheckoutModal: React.FC<BookingCheckoutModalProps> = ({
                     ) : (
                       <>
                         <Lock className="w-3.5 h-3.5" />
-                        <span>Pay ₹{grandTotal.toLocaleString('en-IN')} & Confirm</span>
+                        <span>
+                          {paymentMethod === 'PayAfterRide'
+                            ? `Confirm Ride · Pay ₹${grandTotal.toLocaleString('en-IN')} After Trip`
+                            : `Pay ₹${grandTotal.toLocaleString('en-IN')} & Confirm`}
+                        </span>
                       </>
                     )}
                   </button>
@@ -815,15 +917,34 @@ export const BookingCheckoutModal: React.FC<BookingCheckoutModalProps> = ({
                   </span>
                 </div>
                 <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                  <span>Total Amount Paid:</span>
+                  <span>{confirmedBooking.paymentStatus === 'pay_after_ride' ? 'Pay to Driver After Ride:' : 'Total Amount Paid:'}</span>
                   <span className="font-mono font-bold text-slate-900 dark:text-white">
-                    ₹{confirmedBooking.fareBreakdown.totalAmount.toLocaleString('en-IN')} (Txn: {confirmedBooking.paymentTxnId})
+                    ₹{confirmedBooking.fareBreakdown.totalAmount.toLocaleString('en-IN')} ({confirmedBooking.paymentStatus === 'pay_after_ride' ? 'Cash / Direct UPI at Drop' : `Txn: ${confirmedBooking.paymentTxnId}`})
                   </span>
                 </div>
+                {confirmedBooking.driverInfo?.otp && (
+                  <div className="flex justify-between items-center pt-2 border-t border-slate-200 dark:border-slate-700">
+                    <span className="font-bold text-slate-700 dark:text-slate-300">Start Ride PIN (OTP):</span>
+                    <span className="font-mono font-black text-base px-2.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                      {confirmedBooking.driverInfo.otp}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Action Buttons */}
               <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                {onOpenLiveTracker && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenLiveTracker(confirmedBooking)}
+                    className="px-5 py-2.5 text-xs font-black text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm shadow-emerald-600/20 cursor-pointer"
+                  >
+                    <Navigation className="w-3.5 h-3.5" />
+                    <span>Enter OTP &amp; Start Live Map</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => onOpenGmailConfirm(confirmedBooking)}
@@ -847,7 +968,7 @@ export const BookingCheckoutModal: React.FC<BookingCheckoutModalProps> = ({
                   onClick={onClose}
                   className="px-5 py-2.5 text-xs font-bold text-white bg-slate-900 dark:bg-sky-600 hover:bg-slate-800 rounded-lg transition-colors"
                 >
-                  Done & View My Bookings
+                  Done &amp; View My Bookings
                 </button>
               </div>
             </div>
@@ -855,18 +976,7 @@ export const BookingCheckoutModal: React.FC<BookingCheckoutModalProps> = ({
         </div>
       </div>
 
-      {/* Interactive Fingerprint Scanner for 1-Tap Biometric Payment */}
-      {isFingerprintScannerOpen && (
-        <FingerprintScannerModal
-          mode="payment"
-          paymentAmount={grandTotal}
-          credentialUser={scannerUser}
-          onSuccess={handleFingerprintPaySuccess}
-          onCancel={() => {
-            setIsFingerprintScannerOpen(false);
-          }}
-        />
-      )}
+
     </div>
   );
 };
