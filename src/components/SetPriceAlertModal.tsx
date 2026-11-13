@@ -14,6 +14,7 @@ import { PriceAlert, TransportCategory, TransportOption, UserAccount } from '../
 import { createPriceAlert, evaluatePriceAlerts } from '../services/api';
 import { sendPriceDropAlertNotification } from '../services/gmailService';
 import { getAccessToken } from '../services/firebaseAuth';
+import { sendPriceAlertPushNotification } from '../services/fcmService';
 
 interface SetPriceAlertModalProps {
   initialOrigin?: string;
@@ -119,6 +120,15 @@ export const SetPriceAlertModal: React.FC<SetPriceAlertModalProps> = ({
             match.matchingOption.title,
             token
           );
+          if (currentUser?.id) {
+            await sendPriceAlertPushNotification(
+              currentUser.id,
+              newAlert.id,
+              `${origin} → ${destination}`,
+              match.matchingOption.price,
+              targetPrice
+            );
+          }
         } catch (e) {
           console.warn('Immediate price drop alert email queued:', e);
         }

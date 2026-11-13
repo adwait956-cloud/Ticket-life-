@@ -27,6 +27,7 @@ import {
   evaluatePriceAlerts,
 } from '../services/api';
 import { getAccessToken } from '../services/firebaseAuth';
+import { requestFCMToken } from '../services/fcmService';
 
 interface NotificationCenterModalProps {
   currentUser?: UserAccount | null;
@@ -53,6 +54,19 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
 
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [fcmRegistered, setFcmRegistered] = useState(false);
+
+  const handleEnableFCM = async () => {
+    const token = await requestFCMToken();
+    if (token) {
+      setFcmRegistered(true);
+      setStatusMessage('🔔 Firebase Cloud Messaging (FCM) Push Notifications successfully enabled for this device!');
+      setTimeout(() => setStatusMessage(null), 4000);
+    } else {
+      setErrorMessage('Notification permission denied or FCM not supported in this browser.');
+      setTimeout(() => setErrorMessage(null), 4000);
+    }
+  };
 
   const [logs, setLogs] = useState<EmailNotificationLog[]>(() => getStoredNotificationLogs());
 
@@ -194,6 +208,31 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
           {/* TAB 1: PRICE ALERTS WATCHLIST */}
           {activeTab === 'alerts' && (
             <div className="space-y-4">
+              {/* FCM Push Notification Device Registration Banner */}
+              <div className="p-4 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent rounded-2xl border border-amber-500/30 flex items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 font-black text-xs text-amber-800 dark:text-amber-300">
+                    <Bell className="w-4 h-4 text-amber-600" />
+                    <span>Firebase Cloud Messaging (FCM) Push Notifications</span>
+                  </div>
+                  <p className="text-[11px] text-stone-600 dark:text-stone-400">
+                    Enable real-time push alerts on this device for instant booking status updates and price drop triggers.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleEnableFCM}
+                  disabled={fcmRegistered}
+                  className={`px-4 py-2 font-black text-xs rounded-xl shadow-xs transition-all shrink-0 ${
+                    fcmRegistered
+                      ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300'
+                      : 'bg-amber-500 hover:bg-amber-400 text-stone-950 cursor-pointer active:scale-95'
+                  }`}
+                >
+                  {fcmRegistered ? 'FCM Enabled ✓' : 'Enable FCM Push'}
+                </button>
+              </div>
+
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-stone-100 dark:border-stone-800">
                 <div>
                   <h3 className="font-extrabold text-stone-900 dark:text-white text-sm">

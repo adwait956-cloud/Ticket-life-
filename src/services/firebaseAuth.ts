@@ -20,7 +20,7 @@ import { getDatabase, ref, get, remove } from 'firebase/database';
 import { getStoredUser } from './api';
 
 // Initialize Firebase only once
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
 export const rtdb = getDatabase(app);
 export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId || '(default)');

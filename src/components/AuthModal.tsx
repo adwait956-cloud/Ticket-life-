@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   X,
   ShieldCheck,
@@ -61,6 +62,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [isSignUpSuccessAnimated, setIsSignUpSuccessAnimated] = useState(false);
 
   // Sign In inputs - initialized completely blank
   const [loginEmail, setLoginEmail] = useState('');
@@ -391,13 +393,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       };
 
       saveStoredUser(userObj);
-      setSuccessMessage('Account created successfully! Dispatching confirmation email & entering home screen...');
+      setIsSignUpSuccessAnimated(true);
       if (onNotificationSent) onNotificationSent('account_created', signUpEmail.trim());
 
       setTimeout(() => {
         onSuccess(userObj, token || undefined);
         onClose();
-      }, 600);
+      }, 1600);
     } catch (fbErr: any) {
       console.warn('Firebase registration notice:', fbErr.message);
       if (fbErr.code === 'auth/email-already-in-use') {
@@ -585,6 +587,51 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-950/85 backdrop-blur-md flex items-center justify-center p-4">
       <div className="relative bg-white dark:bg-stone-900 rounded-3xl shadow-2xl border border-stone-200 dark:border-stone-800 w-full max-w-lg overflow-hidden transition-all">
+        {/* Sleek Framer Motion Success Animation Overlay */}
+        <AnimatePresence>
+          {isSignUpSuccessAnimated && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-50 bg-stone-950/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center text-white"
+            >
+              <motion.div
+                initial={{ scale: 0.4, opacity: 0, rotate: -25 }}
+                animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                transition={{ type: 'spring', damping: 12, stiffness: 220 }}
+                className="w-20 h-20 rounded-full bg-gradient-to-tr from-amber-500 to-emerald-400 flex items-center justify-center shadow-2xl mb-5 shadow-amber-500/40"
+              >
+                <CheckCircle2 className="w-10 h-10 text-stone-950 stroke-[2.5]" />
+              </motion.div>
+
+              <motion.div
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.15 }}
+                className="space-y-2 max-w-sm"
+              >
+                <span className="text-[10px] font-extrabold uppercase tracking-widest text-amber-400">
+                  TICKET LIFE · MOBILITY REIMAGINED
+                </span>
+                <h3 className="text-xl font-black">
+                  Account Created Successfully! 🎉
+                </h3>
+                <p className="text-xs text-stone-300 leading-relaxed">
+                  Welcome aboard, <strong className="text-amber-300">{signUpName || 'Passenger'}</strong>! Confirmation email has been dispatched. Transitioning smoothly to home screen...
+                </p>
+              </motion.div>
+
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: '100%' }}
+                transition={{ duration: 1.4, ease: 'easeInOut' }}
+                className="h-1.5 bg-gradient-to-r from-amber-500 to-emerald-400 rounded-full max-w-xs mt-8"
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Header */}
         <div className="px-6 py-5 border-b border-stone-100 dark:border-stone-800 flex items-center justify-between bg-stone-50/80 dark:bg-stone-900/60">
           <div>
