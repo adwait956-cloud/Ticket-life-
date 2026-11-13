@@ -52,7 +52,7 @@ export const DriverPayoutsSection: React.FC<DriverPayoutsSectionProps> = ({
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'settled'>('all');
   const [categoryFilter, setCategoryFilter] = useState<TransportCategory | 'all'>('all');
   const [expandedDriverId, setExpandedDriverId] = useState<string | null>(null);
-  const [activeSubTab, setActiveSubTab] = useState<'drivers' | 'history'>('drivers');
+  const [activeSubTab, setActiveSubTab] = useState<'drivers' | 'performance' | 'history'>('drivers');
 
   // Modal states
   const [selectedDriverForPayout, setSelectedDriverForPayout] = useState<DriverPayoutSummary | null>(null);
@@ -319,7 +319,7 @@ export const DriverPayoutsSection: React.FC<DriverPayoutsSectionProps> = ({
       </div>
 
       {/* Sub-Tabs: Driver Balances vs Payout History */}
-      <div className="flex items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-2">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-2">
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -331,6 +331,18 @@ export const DriverPayoutsSection: React.FC<DriverPayoutsSectionProps> = ({
             }`}
           >
             Driver Accounts ({summaries.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('performance')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 ${
+              activeSubTab === 'performance'
+                ? 'bg-slate-900 text-white dark:bg-amber-500 dark:text-slate-950'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+            <span>Driver Performance</span>
           </button>
           <button
             type="button"
@@ -672,6 +684,144 @@ export const DriverPayoutsSection: React.FC<DriverPayoutsSectionProps> = ({
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* DRIVER PERFORMANCE SUB-TAB */}
+      {activeSubTab === 'performance' && (
+        <div className="space-y-6">
+          {/* Performance Overview Banner */}
+          <div className="p-5 bg-gradient-to-r from-slate-900 via-slate-900 to-sky-950 rounded-2xl text-white border border-slate-800 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-bold text-amber-400 uppercase tracking-widest">
+                <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                <span>Captain Quality &amp; Fleet Telemetry</span>
+              </div>
+              <h3 className="text-xl font-black mt-1">
+                Driver Performance Analytics &amp; Ratings
+              </h3>
+              <p className="text-xs text-slate-300 mt-0.5">
+                Monitoring customer satisfaction ratings, ride completion percentages, and on-time punctuality across all active fleet captains.
+              </p>
+            </div>
+
+            {/* Fleet Average Rating Badge */}
+            <div className="p-4 bg-slate-800/90 backdrop-blur-md rounded-xl border border-slate-700 text-center shrink-0">
+              <div className="text-[10px] uppercase font-bold text-slate-400">Fleet Avg Rating</div>
+              <div className="text-2xl font-black font-mono text-amber-400 flex items-center justify-center gap-1 mt-0.5">
+                <span>★</span>
+                <span>{(summaries.reduce((acc, d) => acc + d.rating, 0) / Math.max(1, summaries.length)).toFixed(2)}</span>
+              </div>
+              <div className="text-[10px] text-slate-400 mt-0.5">Across {summaries.length} active drivers</div>
+            </div>
+          </div>
+
+          {/* Performance Cards Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {summaries.map((driver) => {
+              const compRate = driver.completionRate ?? 98.5;
+              const acceptRate = driver.acceptanceRate ?? 96.0;
+              const onTime = driver.onTimeRate ?? 97.5;
+              const starCount = driver.ratingCount ?? 180;
+              const fiveStar = driver.fiveStarPercent ?? 93;
+              const tierColor =
+                driver.tier === 'Platinum'
+                  ? 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 border-purple-300'
+                  : driver.tier === 'Gold'
+                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300'
+                  : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-300';
+
+              return (
+                <div
+                  key={driver.driverId}
+                  className="p-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3.5">
+                      <img
+                        src={driver.driverPhotoUrl}
+                        alt={driver.driverName}
+                        className="w-12 h-12 rounded-full object-cover border-2 border-slate-200 dark:border-slate-700 shadow-xs"
+                      />
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-base font-extrabold text-slate-900 dark:text-white">
+                            {driver.driverName}
+                          </h4>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase border ${tierColor}`}>
+                            {driver.tier || 'Gold'} · {driver.badge || 'Captain'}
+                          </span>
+                        </div>
+                        <div className="text-xs text-slate-500 font-mono mt-0.5">
+                          {driver.vehicleType} ({driver.vehiclePlateNumber})
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <div className="flex items-center gap-1 px-2 py-1 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-black text-sm">
+                        <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                        <span>{driver.rating}</span>
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-mono mt-0.5">{starCount} reviews</div>
+                    </div>
+                  </div>
+
+                  {/* Metrics Progress Bars */}
+                  <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+                    {/* Completion Rate */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between font-bold">
+                        <span className="text-slate-600 dark:text-slate-400">Ride Completion Rate</span>
+                        <span className="font-mono text-emerald-600 dark:text-emerald-400">{compRate}%</span>
+                      </div>
+                      <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
+                        <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${compRate}%` }} />
+                      </div>
+                    </div>
+
+                    {/* On-Time Punctuality */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between font-bold">
+                        <span className="text-slate-600 dark:text-slate-400">On-Time Punctuality Rate</span>
+                        <span className="font-mono text-sky-600 dark:text-sky-400">{onTime}%</span>
+                      </div>
+                      <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
+                        <div className="bg-sky-500 h-full rounded-full" style={{ width: `${onTime}%` }} />
+                      </div>
+                    </div>
+
+                    {/* Acceptance Rate */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between font-bold">
+                        <span className="text-slate-600 dark:text-slate-400">Trip Acceptance Rate</span>
+                        <span className="font-mono text-purple-600 dark:text-purple-400">{acceptRate}%</span>
+                      </div>
+                      <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
+                        <div className="bg-purple-500 h-full rounded-full" style={{ width: `${acceptRate}%` }} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Footer Stats Strip */}
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800 grid grid-cols-3 gap-2 text-center text-xs">
+                    <div className="p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
+                      <div className="text-[10px] text-slate-400 uppercase font-bold">Completed</div>
+                      <div className="font-mono font-black text-slate-800 dark:text-slate-200 mt-0.5">{driver.completedRidesCount} trips</div>
+                    </div>
+                    <div className="p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
+                      <div className="text-[10px] text-slate-400 uppercase font-bold">5-Star Share</div>
+                      <div className="font-mono font-black text-amber-600 dark:text-amber-400 mt-0.5">{fiveStar}%</div>
+                    </div>
+                    <div className="p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
+                      <div className="text-[10px] text-slate-400 uppercase font-bold">Status</div>
+                      <div className="font-mono font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">Active Fleet</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
